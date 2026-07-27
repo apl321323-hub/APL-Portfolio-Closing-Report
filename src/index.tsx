@@ -159,8 +159,17 @@ const DEFAULT_CATEGORIES = [
   { id:'c6', name:'기타신용', color:'#6b7280', products:['플러스론','T플러스론','토탈론','레이디론','다이렉트론(A)','다이렉트론(W)','전월세론','우량론','프리론','기타','회생'] },
 ];
 
+// 상위 카테고리(그룹) 설정 — 카테고리를 묶는 한 단계 위 계층
+const DEFAULT_GROUPS = [
+  { id:'g1', name:'담보', color:'#1e40af', categoryIds:['c1'] },
+  { id:'g2', name:'신용', color:'#065f46', categoryIds:['c2','c3','c4','c5'] },
+  { id:'g3', name:'기타/회생', color:'#374151', categoryIds:['c6'] },
+];
+
 let CATEGORIES = [];
+let GROUPS = [];        // 상위 카테고리(그룹)
 let editCategories = []; // 모달 편집용
+let editGroups = [];     // 모달 그룹 편집용
 
 // ==================== 로드 ====================
 async function init() {
@@ -194,10 +203,66 @@ function loadCategoriesFromStorage() {
   } catch(e) {
     CATEGORIES = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
   }
+  try {
+    const savedG = localStorage.getItem('apl_groups_v1');
+    if (savedG) {
+      GROUPS = JSON.parse(savedG);
+    } else {
+      GROUPS = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+    }
+  } catch(e) {
+    GROUPS = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+  }
 }
 
 function saveCatsToStorage() {
   localStorage.setItem('apl_categories_v2', JSON.stringify(CATEGORIES));
+  localStorage.setItem('apl_groups_v1', JSON.stringify(GROUPS));
+}
+
+// 카테고리 ID → 상위 그룹 반환
+function getGroupOfCategory(catId) {
+  for (const g of GROUPS) {
+    if (g.categoryIds.includes(catId)) return g;
+  }
+  return { id:'__none__', name:'미배정', color:'#9ca3af' };
+}
+
+// 그룹별 집계
+function aggregateByGroup() {
+  const catMap = {}; // catId → 집계
+  for (const c of CATEGORIES) {
+    catMap[c.id] = { ...c, count:0, balance:0, rateSum:0, rateCount:0, ltvSum:0, ltvCount:0, overdueAny:0, balAny:0 };
+  }
+  catMap['__none__'] = { id:'__none__', name:'미분류', color:'#9ca3af', count:0, balance:0, rateSum:0, rateCount:0, ltvSum:0, ltvCount:0, overdueAny:0, balAny:0 };
+  for (const r of LOAN.records) {
+    const cat = getCategoryOfProduct(r.p);
+    const cm = catMap[cat.id] || catMap['__none__'];
+    cm.count++; cm.balance += r.b;
+    if(r.r>0){cm.rateSum+=r.r;cm.rateCount++;}
+    if(r.ltv>0){cm.ltvSum+=r.ltv;cm.ltvCount++;}
+    if(r.d>0){cm.overdueAny++;cm.balAny+=r.b;}
+  }
+  // 그룹별 합산
+  const grpMap = {};
+  const allGrps = [...GROUPS, { id:'__none__', name:'미배정', color:'#9ca3af', categoryIds:[] }];
+  for (const g of allGrps) {
+    grpMap[g.id] = { ...g, count:0, balance:0, rateSum:0, rateCount:0, overdueAny:0, balAny:0, cats:[] };
+  }
+  for (const [cid, cv] of Object.entries(catMap)) {
+    if (cv.count === 0) continue;
+    const grp = getGroupOfCategory(cid);
+    const gm = grpMap[grp.id];
+    if (!gm) continue;
+    gm.count    += cv.count;
+    gm.balance  += cv.balance;
+    gm.rateSum  += cv.rateSum;
+    gm.rateCount+= cv.rateCount;
+    gm.overdueAny += cv.overdueAny;
+    gm.balAny   += cv.balAny;
+    gm.cats.push(cv);
+  }
+  return Object.values(grpMap).filter(g => g.count > 0);
 }
 
 // ==================== 라우팅 ====================
@@ -426,7 +491,7 @@ function renderOverview(el) {
     <div class="card p-5">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>카테고리별 잔고</h3>
-        <button onclick="openSettings()" class="text-xs text-blue-600 hover:underline"><i class="fas fa-edit mr-1"></i>설정</button>
+        <button onclick="openSettingsOnGroupTab()" class="text-xs text-purple-600 hover:underline"><i class="fas fa-layer-group mr-1"></i>그룹설정</button>
       </div>
       <div class="chart-wrap mb-3"><canvas id="ov-pie"></canvas></div>
       <div class="space-y-1.5 mt-2">
@@ -477,6 +542,7 @@ function renderOverview(el) {
 function renderBalance(el) {
   const total = LOAN.records.reduce((s,r)=>s+r.b,0);
   const catData = aggregateByCategory();
+  const grpData = aggregateByGroup();
   const pMap = aggregateByProduct();
   
   el.innerHTML = \`
@@ -491,7 +557,42 @@ function renderBalance(el) {
     </button>
   </div>
 
+  <!-- 상위 그룹 요약 바 -->
+  \${grpData.length > 0 ? \`<div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-layer-group mr-2" style="color:#7c3aed"></i>상위 카테고리(그룹) 구성비</h3>
+    <div class="flex rounded-xl overflow-hidden h-8 mb-4">
+      \${grpData.map(g=>\`<div class="flex items-center justify-center text-white text-xs font-bold transition-all"
+          style="width:\${(g.balance/total*100).toFixed(1)}%;background:\${g.color};min-width:\${g.balance/total>0.04?'0':'0'}"
+          title="\${g.name}: \${fmtAmt(g.balance)} (\${(g.balance/total*100).toFixed(1)}%)">\${(g.balance/total*100)>=6?g.name:''}</div>\`).join('')}
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-\${Math.min(grpData.length,6)} gap-3">
+      \${grpData.map(g=>{
+        const pct=(g.balance/total*100);
+        const avgR=g.rateCount>0?(g.rateSum/g.rateCount).toFixed(2):'-';
+        const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
+        return \`<div class="rounded-xl p-3 text-center" style="background:\${g.color}12;border:1.5px solid \${g.color}40">
+          <div class="flex items-center justify-center gap-1.5 mb-1">
+            <div class="w-2.5 h-2.5 rounded-full" style="background:\${g.color}"></div>
+            <span class="text-xs font-bold text-gray-700">\${g.name}</span>
+          </div>
+          <p class="text-2xl font-black" style="color:\${g.color}">\${pct.toFixed(1)}%</p>
+          <p class="text-xs text-gray-500 mt-0.5">\${fmtAmt(g.balance)} / \${fmtN(g.count)}건</p>
+          <div class="mt-1.5 flex justify-center gap-3 text-xs text-gray-400">
+            <span>금리 <b class="text-gray-600">\${avgR}%</b></span>
+            <span>연체 <b class="\${parseFloat(odR)>=5?'text-red-600':parseFloat(odR)>=3?'text-orange-500':'text-green-600'}">\${odR}%</b></span>
+          </div>
+          <div class="mt-2 flex flex-wrap justify-center gap-1">
+            \${g.cats.map(c=>\`<span class="text-xs px-1.5 py-0.5 rounded-full text-white" style="background:\${c.color}cc" title="\${c.name}: \${fmtAmt(c.balance)}">\${c.name}</span>\`).join('')}
+          </div>
+        </div>\`;
+      }).join('')}
+    </div>
+  </div>\` : ''}
+
   <!-- 카테고리별 상세 카드 -->
+  <div>
+    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
+  </div>
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
     \${catData.map(c => {
       const pct = (c.balance/total*100);
@@ -947,14 +1048,17 @@ function renderTrend(el) {
 const PALETTE = ['#2563eb','#059669','#7c3aed','#d97706','#0891b2','#dc2626',
                  '#6366f1','#0d9488','#c026d3','#ea580c','#84cc16','#64748b',
                  '#be185d','#92400e','#1d4ed8','#15803d'];
+const GRP_PALETTE = ['#1e40af','#065f46','#374151','#7e22ce','#92400e','#9f1239',
+                     '#0369a1','#166534','#1d4ed8','#15803d','#a16207','#334155'];
+
+// 설정 탭 상태
+let settingsTab = 'categories'; // 'categories' | 'groups'
 
 function openSettings() {
-  // 편집용 복사
   editCategories = JSON.parse(JSON.stringify(CATEGORIES));
-  
-  // 미분류 상품 파악
+  editGroups = JSON.parse(JSON.stringify(GROUPS));
+  settingsTab = 'categories';
   const allProducts = [...new Set(LOAN.records.map(r=>r.p))].sort();
-  
   renderSettingsBody(allProducts);
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -963,14 +1067,40 @@ function closeSettings() {
   document.getElementById('settings-modal').classList.remove('open');
 }
 
+function openSettingsOnGroupTab() {
+  editCategories = JSON.parse(JSON.stringify(CATEGORIES));
+  editGroups = JSON.parse(JSON.stringify(GROUPS));
+  settingsTab = 'groups';
+  const allProducts = [...new Set(LOAN.records.map(r=>r.p))].sort();
+  renderSettingsBody(allProducts);
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+function switchSettingsTab(tab) {
+  settingsTab = tab;
+  const ap = [...new Set(LOAN.records.map(r=>r.p))].sort();
+  renderSettingsBody(ap);
+}
+
 function renderSettingsBody(allProducts) {
-  const assignedProducts = new Set(editCategories.flatMap(c=>c.products));
-  const unassigned = allProducts.filter(p=>!assignedProducts.has(p));
-  
   const body = document.getElementById('settings-body');
-  body.innerHTML = \`
-<div class="space-y-5">
-  <!-- 미분류 상품 풀 -->
+
+  // 탭 헤더
+  const tabHtml = \`
+  <div class="flex gap-1 mb-5 bg-gray-100 p-1 rounded-xl">
+    <button onclick="switchSettingsTab('categories')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition \${settingsTab==='categories'?'bg-white text-blue-700 shadow':'text-gray-500 hover:text-gray-700'}">
+      <i class="fas fa-tags mr-1.5"></i>카테고리 (하위)
+    </button>
+    <button onclick="switchSettingsTab('groups')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition \${settingsTab==='groups'?'bg-white text-blue-700 shadow':'text-gray-500 hover:text-gray-700'}">
+      <i class="fas fa-layer-group mr-1.5"></i>상위 카테고리 (그룹)
+    </button>
+  </div>\`;
+
+  if (settingsTab === 'categories') {
+    const assignedProducts = new Set(editCategories.flatMap(c=>c.products));
+    const unassigned = allProducts.filter(p=>!assignedProducts.has(p));
+    body.innerHTML = tabHtml + \`
+<div class="space-y-4">
   <div>
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미분류 상품 (드래그 또는 클릭으로 카테고리에 배정)</p>
     <div id="unassigned-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-1"
@@ -983,17 +1113,179 @@ function renderSettingsBody(allProducts) {
           onclick="showProductMenu('\${p}','__none__',event)">\${p}</span>\`).join('')}
     </div>
   </div>
-  
-  <!-- 카테고리 목록 -->
   <div class="space-y-3" id="cat-list">
     \${editCategories.map((cat,idx)=>renderCatCard(cat,idx,allProducts)).join('')}
   </div>
-  
-  <!-- 카테고리 추가 버튼 -->
   <button onclick="addCategory()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-500 transition">
     <i class="fas fa-plus mr-2"></i>카테고리 추가
   </button>
 </div>\`;
+  } else {
+    // ── 상위 카테고리(그룹) 탭 ──
+    const assignedCatIds = new Set(editGroups.flatMap(g=>g.categoryIds));
+    const unassignedCats = editCategories.filter(c=>!assignedCatIds.has(c.id));
+    body.innerHTML = tabHtml + \`
+<div class="space-y-4">
+  <p class="text-xs text-gray-500">카테고리(하위)들을 드래그하거나 선택하여 상위 카테고리(그룹)에 배정합니다.</p>
+  <!-- 미배정 카테고리 풀 -->
+  <div>
+    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미배정 카테고리</p>
+    <div id="unassigned-cat-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-2"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="dropCatToUnassigned(event)">
+      \${unassignedCats.length===0
+        ? '<span class="text-xs text-gray-400">모든 카테고리가 그룹에 배정됨</span>'
+        : unassignedCats.map(c=>\`<span class="product-chip assigned" style="background:\${c.color};border-color:\${c.color}" draggable="true"
+            ondragstart="dragCatStart(event,'\${c.id}','__none__')">
+            \${c.name}
+          </span>\`).join('')}
+    </div>
+  </div>
+  <!-- 그룹 목록 -->
+  <div class="space-y-3" id="grp-list">
+    \${editGroups.map((g,idx)=>renderGroupCard(g,idx)).join('')}
+  </div>
+  <button onclick="addGroup()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-purple-300 hover:text-purple-500 transition">
+    <i class="fas fa-plus mr-2"></i>상위 카테고리(그룹) 추가
+  </button>
+</div>\`;
+  }
+}
+
+// ── 그룹 카드 렌더링 ──
+function renderGroupCard(grp, idx) {
+  const cats = editCategories.filter(c=>grp.categoryIds.includes(c.id));
+  return \`<div class="cat-card" id="grpcard_\${grp.id}">
+    <div class="cat-header" style="background:\${grp.color}18" onclick="toggleGrpCard('\${grp.id}')">
+      <div class="cat-color-dot" style="background:\${grp.color}" onclick="event.stopPropagation();showGroupColorPicker('\${grp.id}',event)"></div>
+      <input type="text" value="\${grp.name}" class="flex-1 bg-transparent font-bold text-gray-800 outline-none text-sm"
+        onchange="updateGroupName('\${grp.id}',this.value)" onclick="event.stopPropagation()" />
+      <span class="text-xs px-2 py-0.5 rounded-full text-white font-medium" style="background:\${grp.color}">\${cats.length}개 카테고리</span>
+      <button onclick="event.stopPropagation();removeGroup('\${grp.id}')" class="text-gray-300 hover:text-red-400 ml-2"><i class="fas fa-trash text-xs"></i></button>
+      <i class="fas fa-chevron-down text-xs text-gray-400 ml-2 transition-transform" id="grparrow_\${grp.id}"></i>
+    </div>
+    <div id="grpbody_\${grp.id}" class="p-3">
+      <div class="min-h-10 border border-dashed border-gray-200 rounded-lg p-2 flex flex-wrap gap-2"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="dropCatToGroup(event,'\${grp.id}')">
+        \${cats.length===0
+          ? '<span class="text-xs text-gray-400">카테고리를 드래그하여 배정하세요</span>'
+          : cats.map(c=>\`<span class="product-chip assigned" style="background:\${c.color};border-color:\${c.color}" draggable="true"
+              ondragstart="dragCatStart(event,'\${c.id}','\${grp.id}')"
+              onclick="removeCatFromGroup('\${grp.id}','\${c.id}')" title="클릭하여 제거">
+              \${c.name} <i class="fas fa-times text-xs opacity-70"></i>
+            </span>\`).join('')}
+      </div>
+      <div class="mt-2 flex gap-2">
+        <select id="grpaddsel_\${grp.id}" class="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none">
+          <option value="">+ 카테고리 추가...</option>
+          \${editCategories.filter(c=>!grp.categoryIds.includes(c.id)).map(c=>\`<option value="\${c.id}">\${c.name}</option>\`).join('')}
+        </select>
+        <button onclick="addCatToGroupFromSelect('\${grp.id}')" class="px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700">추가</button>
+      </div>
+    </div>
+  </div>\`;
+}
+
+function toggleGrpCard(id) {
+  const body = document.getElementById('grpbody_'+id);
+  const arrow = document.getElementById('grparrow_'+id);
+  if(!body) return;
+  const hidden = body.style.display==='none';
+  body.style.display = hidden?'':'none';
+  if(arrow) arrow.style.transform = hidden?'':'rotate(-90deg)';
+}
+
+function showGroupColorPicker(grpId, event) {
+  event.stopPropagation();
+  const existing = document.getElementById('color-popup');
+  if(existing) existing.remove();
+  const grp = editGroups.find(g=>g.id===grpId);
+  const popup = document.createElement('div');
+  popup.id = 'color-popup';
+  popup.style.cssText = 'position:fixed;z-index:2000;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);';
+  popup.style.left = (event.clientX+10)+'px';
+  popup.style.top  = (event.clientY+10)+'px';
+  popup.innerHTML = \`<p class="text-xs font-bold text-gray-500 mb-2">색상 선택</p>
+    <div class="grid grid-cols-4 gap-2">\${GRP_PALETTE.map(c=>\`
+      <div class="color-swatch \${grp&&grp.color===c?'selected':''}" style="background:\${c}" onclick="setGroupColor('\${grpId}','\${c}')"></div>
+    \`).join('')}</div>\`;
+  document.body.appendChild(popup);
+  setTimeout(()=>document.addEventListener('click',()=>popup.remove(),{once:true}),50);
+}
+
+function setGroupColor(grpId, color) {
+  const g = editGroups.find(g=>g.id===grpId);
+  if(g){g.color=color; refreshSettingsBody();}
+}
+
+function updateGroupName(grpId, name) {
+  const g = editGroups.find(g=>g.id===grpId);
+  if(g) g.name = name;
+}
+
+function removeGroup(grpId) {
+  if(!confirm('그룹을 삭제하면 소속 카테고리들이 미배정으로 이동합니다.')) return;
+  editGroups = editGroups.filter(g=>g.id!==grpId);
+  refreshSettingsBody();
+}
+
+function addGroup() {
+  const newGrp = { id:'g'+Date.now(), name:'새 그룹', color:GRP_PALETTE[editGroups.length%GRP_PALETTE.length], categoryIds:[] };
+  editGroups.push(newGrp);
+  refreshSettingsBody();
+}
+
+function addCatToGroupFromSelect(grpId) {
+  const sel = document.getElementById('grpaddsel_'+grpId);
+  if(!sel||!sel.value) return;
+  const catId = sel.value;
+  editGroups.forEach(g=>{ g.categoryIds = g.categoryIds.filter(id=>id!==catId); });
+  const g = editGroups.find(g=>g.id===grpId);
+  if(g && !g.categoryIds.includes(catId)) g.categoryIds.push(catId);
+  refreshSettingsBody();
+}
+
+function removeCatFromGroup(grpId, catId) {
+  const g = editGroups.find(g=>g.id===grpId);
+  if(g){ g.categoryIds = g.categoryIds.filter(id=>id!==catId); refreshSettingsBody(); }
+}
+
+// 드래그 — 카테고리 단위
+let dragCatData = null;
+function dragCatStart(event, catId, fromGrpId) {
+  dragCatData = { catId, fromGrpId };
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function dropCatToGroup(event, toGrpId) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  if(!dragCatData) return;
+  const {catId, fromGrpId} = dragCatData;
+  if(fromGrpId !== '__none__') {
+    const from = editGroups.find(g=>g.id===fromGrpId);
+    if(from) from.categoryIds = from.categoryIds.filter(id=>id!==catId);
+  }
+  const to = editGroups.find(g=>g.id===toGrpId);
+  if(to && !to.categoryIds.includes(catId)) to.categoryIds.push(catId);
+  dragCatData = null;
+  refreshSettingsBody();
+}
+
+function dropCatToUnassigned(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  if(!dragCatData) return;
+  const {catId, fromGrpId} = dragCatData;
+  if(fromGrpId !== '__none__') {
+    const from = editGroups.find(g=>g.id===fromGrpId);
+    if(from) from.categoryIds = from.categoryIds.filter(id=>id!==catId);
+  }
+  dragCatData = null;
+  refreshSettingsBody();
 }
 
 function renderCatCard(cat, idx, allProducts) {
@@ -1140,14 +1432,16 @@ function dropToUnassigned(event) {
 
 function saveCategories() {
   CATEGORIES = JSON.parse(JSON.stringify(editCategories));
+  GROUPS = JSON.parse(JSON.stringify(editGroups));
   saveCatsToStorage();
   closeSettings();
   renderPage();
 }
 
 function resetCategories() {
-  if(!confirm('기본 카테고리로 초기화하시겠습니까?')) return;
+  if(!confirm('카테고리 및 그룹을 기본값으로 초기화하시겠습니까?')) return;
   editCategories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  editGroups = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
   refreshSettingsBody();
 }
 
