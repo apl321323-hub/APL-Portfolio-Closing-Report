@@ -495,10 +495,11 @@ function aggregateByProduct() {
   const map = {};
   for(const r of LOAN.records){
     const p=r.p||'기타';
-    if(!map[p])map[p]={count:0,balance:0,rateWSum:0,rateBalSum:0,ltvSum:0,ltvCount:0,overdue0:0,overdue10:0,overdue30:0,overdue60:0,overdue90:0,overdueMore:0,bal0:0,bal30:0};
+    if(!map[p])map[p]={count:0,balance:0,rateWSum:0,rateBalSum:0,ltvWSum:0,ltvAppSum:0,overdue0:0,overdue10:0,overdue30:0,overdue60:0,overdue90:0,overdueMore:0,bal0:0,bal30:0};
     map[p].count++;map[p].balance+=r.b;
     if(r.r>0&&r.b>0){map[p].rateWSum+=r.b*r.r;map[p].rateBalSum+=r.b;}  // 잔액가중합
-    if(r.ltv>0){map[p].ltvSum+=r.ltv;map[p].ltvCount++;}
+    // LTV: 담보대출/감정가 가중합 (담보상품만, appraised>0 건만)
+    if(r.appraised>0&&r.loanAmt>0){map[p].ltvWSum+=r.loanAmt;map[p].ltvAppSum+=r.appraised;}
     if(r.d===0){map[p].overdue0++;map[p].bal0+=r.b;}
     else if(r.d<=10)map[p].overdue10++;
     else if(r.d<=30)map[p].overdue30++;
@@ -522,13 +523,14 @@ function aggregateByAgent() {
 function aggregateByCategory() {
   const catMap={};
   const allCats=[...CATEGORIES,{id:'__none__',name:'미분류',color:'#9ca3af',products:[]}];
-  for(const cat of allCats)catMap[cat.id]={...cat,count:0,balance:0,rateWSum:0,rateBalSum:0,ltvSum:0,ltvCount:0,overdue0:0,overdueAny:0,bal0:0,balAny:0};
+  for(const cat of allCats)catMap[cat.id]={...cat,count:0,balance:0,rateWSum:0,rateBalSum:0,ltvWSum:0,ltvAppSum:0,overdue0:0,overdueAny:0,bal0:0,balAny:0};
   for(const r of LOAN.records){
     const cat=getCategoryOfProduct(r.p);
     const cm=catMap[cat.id];if(!cm)continue;
     cm.count++;cm.balance+=r.b;
     if(r.r>0&&r.b>0){cm.rateWSum+=r.b*r.r;cm.rateBalSum+=r.b;}  // 잔액가중합
-    if(r.ltv>0){cm.ltvSum+=r.ltv;cm.ltvCount++;}
+    // LTV: 담보대출/감정가 가중합 (담보상품만)
+    if(r.appraised>0&&r.loanAmt>0){cm.ltvWSum+=r.loanAmt;cm.ltvAppSum+=r.appraised;}
     if(r.d===0){cm.overdue0++;cm.bal0+=r.b;}else{cm.overdueAny++;cm.balAny+=r.b;}
   }
   return Object.values(catMap).filter(c=>c.count>0).sort((a,b)=>(a.order??99)-(b.order??99));
@@ -582,7 +584,7 @@ function renderUploadPage(el) {
       <div>
         <p class="text-sm font-bold text-blue-800 mb-1">엑셀 파일 구조 안내</p>
         <p class="text-xs text-blue-600">결산자료는 <strong>A열(고객명) ~ DJ열(부서)</strong> 까지 114개 컬럼으로 구성됩니다.</p>
-        <p class="text-xs text-blue-600 mt-1">분석에 사용되는 핵심 컬럼: <strong>H열(현재상품) · L열(잔액) · O열(정상이율) · Q열(광고매체) · J열(연체일수) · N열(LTV)</strong></p>
+        <p class="text-xs text-blue-600 mt-1">분석에 사용되는 핵심 컬럼: <strong>H열(현재상품) · L열(잔액) · O열(정상이율) · Q열(광고매체) · J열(연체일수) · K열(최초대출액) · CF열(최종감정가) · CG열(소유비율합계) · CH열(지분율대출원금합계)</strong></p>
       </div>
     </div>
   </div>
@@ -713,6 +715,10 @@ function processFile(file) {
       const colA   = hIdx('광고매체'); // Q
       const colD   = hIdx('연체일수'); // J
       const colLtv = hIdx('LTV');       // BH (or 최근LTV)
+      const colK   = hIdx('최초대출액');      // K열
+      const colCF  = hIdx('최종감정가');      // CF열
+      const colCG  = hIdx('소유비율합계');    // CG열
+      const colCH  = hIdx('지분율대출원금합계'); // CH열
       const colCt  = hIdx('계약구분'); // 계약구분
       const colRt  = hIdx('상환방식'); // 상환방식
       const colCla = hIdx('담보지역'); // 담보지역
@@ -729,13 +735,26 @@ function processFile(file) {
         if (!row || !row[colB]) continue;
         const b = parseFloat(row[colB]) || 0;
         if (b <= 0) continue;
+        const pName = String(row[colP] || '기타').trim();
+        // 담보 LTV 관련 필드 (담보론, 담보론(지분대출)만 사용)
+        const isCollateral = (pName === '담보론' || pName === '담보론(지분대출)');
+        const loanK   = parseFloat(row[colK])  || 0;  // 최초대출액
+        const cfVal   = parseFloat(row[colCF]) || 0;  // 최종감정가
+        const cgVal   = parseFloat(row[colCG]) || 0;  // 소유비율합계(%)
+        const chVal   = parseFloat(row[colCH]) || 0;  // 지분율대출원금합계
+        // 담보대출 = 최초대출액 + 지분율대출원금합계
+        const loanAmt     = isCollateral ? (loanK + chVal)          : 0;
+        // 감정가   = 최종감정가 × 소유비율합계 / 100
+        const appraised   = isCollateral ? (cfVal * cgVal / 100)    : 0;
         records.push({
-          p:   String(row[colP]  || '기타').trim(),
+          p:   pName,
           b:   b,
           r:   parseFloat(row[colR])  || 0,
           a:   String(row[colA]  || '기타').trim(),
           d:   parseInt(row[colD])    || 0,
           ltv: parseFloat(row[colLtv])|| 0,
+          loanAmt,    // 최초대출액+지분율대출원금합계 (담보상품만, 나머지 0)
+          appraised,  // 최종감정가×소유비율합계% (담보상품만, 나머지 0)
           ct:  String(row[colCt] || '').trim(),
           rt:  String(row[colRt] || '').trim(),
           cla: String(row[colCla]|| '').trim(),
@@ -933,7 +952,7 @@ function renderBalance(el) {
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-    \${catData.map(c=>{const pct=(c.balance/total*100);const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';const avgLtv=c.ltvCount>0?(c.ltvSum/c.ltvCount).toFixed(1):'-';const odRate=c.count>0?((c.overdueAny/c.count)*100).toFixed(1):'0';
+    \${catData.map(c=>{const pct=(c.balance/total*100);const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';const avgLtv=c.ltvAppSum>0?(c.ltvWSum/c.ltvAppSum*100).toFixed(1):'-';const odRate=c.count>0?((c.overdueAny/c.count)*100).toFixed(1):'0';
     return \`<div class="card p-5">
       <div class="flex items-start justify-between mb-3">
         <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm" style="background:\${c.color}"></div><span class="font-bold text-gray-800">\${c.name}</span></div>
@@ -945,7 +964,7 @@ function renderBalance(el) {
         <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">건수</p><p class="font-bold text-sm">\${fmtN(c.count)}건</p></div>
         <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">평균금리</p><p class="font-bold text-sm">\${avgR}%</p></div>
         <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">연체율</p><p class="font-bold text-sm \${parseFloat(odRate)>=5?'text-red-600':parseFloat(odRate)>=3?'text-orange-500':'text-green-600'}">\${odRate}%</p></div>
-        \${c.ltvCount>0?\`<div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">평균LTV</p><p class="font-bold text-sm">\${avgLtv}%</p></div>\`:''}
+        \${c.ltvAppSum>0?\`<div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">평균LTV</p><p class="font-bold text-sm">\${avgLtv}%</p></div>\`:''}
       </div>
       <div class="flex flex-wrap gap-1">\${c.products.map(p=>\`<span class="text-xs px-2 py-0.5 rounded-full text-white" style="background:\${c.color}cc">\${p}</span>\`).join('')}</div>
     </div>\`;}).join('')}
@@ -1004,7 +1023,10 @@ function renderProduct(el) {
     <div class="overflow-auto">
       <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>정상</th><th>10일↓</th><th>30일↓</th><th>90일↑</th></tr></thead>
       <tbody>\${pArr.map(([p,v],i)=>{
-        const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';const avgLtv=v.ltvCount>0?(v.ltvSum/v.ltvCount).toFixed(1):'-';
+        const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
+        // 평균LTV: 담보론, 담보론(지분대출)만 표시 — Σ담보대출 / Σ감정가 × 100
+        const isColPrd=(p==='담보론'||p==='담보론(지분대출)');
+        const avgLtv=isColPrd&&v.ltvAppSum>0?(v.ltvWSum/v.ltvAppSum*100).toFixed(1):'-';
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${p}</td><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
         <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td><td>\${pct}%</td><td>\${avgR}%</td><td>\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
         <td class="text-green-600">\${fmtN(v.overdue0)}</td><td>\${fmtN(v.overdue10)}</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="text-red-600 font-bold">\${fmtN(v.overdueMore)}</td></tr>\`;}).join('')}
