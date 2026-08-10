@@ -326,12 +326,12 @@ const DB_KEY = 'apl_months_v1';
 
 // ==================== 카테고리 / 그룹 설정 ====================
 const DEFAULT_CATEGORIES = [
-  { id:'c1', name:'담보상품',      color:'#2563eb', products:['담보론','담보론(지분대출)'] },
-  { id:'c2', name:'신용(N계열)',   color:'#059669', products:['N론','N론(하이브리드)','토마토N론','오투N론','기타N'] },
-  { id:'c3', name:'신용(스타/큐브)',color:'#7c3aed', products:['스타론','스타스위치론','큐브론'] },
-  { id:'c4', name:'신용(토마토)',  color:'#d97706', products:['토마토토탈론','토마토토탈론플러스','토마토론'] },
-  { id:'c5', name:'신용(OP/오투)', color:'#0891b2', products:['OP론','오투론','테일론','프리미엄론'] },
-  { id:'c6', name:'기타신용',      color:'#6b7280', products:['플러스론','T플러스론','토탈론','레이디론','다이렉트론(A)','다이렉트론(W)','전월세론','우량론','프리론','기타','회생'] },
+  { id:'c1', name:'담보상품',      color:'#2563eb', order:1, products:['담보론','담보론(지분대출)'] },
+  { id:'c2', name:'신용(N계열)',   color:'#059669', order:2, products:['N론','N론(하이브리드)','토마토N론','오투N론','기타N'] },
+  { id:'c3', name:'신용(스타/큐브)',color:'#7c3aed', order:3, products:['스타론','스타스위치론','큐브론'] },
+  { id:'c4', name:'신용(토마토)',  color:'#d97706', order:4, products:['토마토토탈론','토마토토탈론플러스','토마토론'] },
+  { id:'c5', name:'신용(OP/오투)', color:'#0891b2', order:5, products:['OP론','오투론','테일론','프리미엄론'] },
+  { id:'c6', name:'기타신용',      color:'#6b7280', order:6, products:['플러스론','T플러스론','토탈론','레이디론','다이렉트론(A)','다이렉트론(W)','전월세론','우량론','프리론','기타','회생'] },
 ];
 const DEFAULT_GROUPS = [
   { id:'g1', name:'담보',       color:'#1e40af', categoryIds:['c1'] },
@@ -476,7 +476,12 @@ function fmtR(n){return n?n.toFixed(2)+'%':'-';}
 function fmtRn(n){return n?n.toFixed(1)+'%':'-';}
 
 function loadCategoriesFromStorage() {
-  try{const s=localStorage.getItem('apl_categories_v2');CATEGORIES=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));}catch(e){CATEGORIES=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));}
+  try{
+    const s=localStorage.getItem('apl_categories_v2');
+    CATEGORIES=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    // order 필드 없는 기존 데이터 마이그레이션
+    CATEGORIES.forEach((c,i)=>{ if(c.order==null) c.order=i+1; });
+  }catch(e){CATEGORIES=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));}
   try{const s=localStorage.getItem('apl_groups_v1');GROUPS=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_GROUPS));}catch(e){GROUPS=JSON.parse(JSON.stringify(DEFAULT_GROUPS));}
 }
 function saveCatsToStorage(){
@@ -526,7 +531,7 @@ function aggregateByCategory() {
     if(r.ltv>0){cm.ltvSum+=r.ltv;cm.ltvCount++;}
     if(r.d===0){cm.overdue0++;cm.bal0+=r.b;}else{cm.overdueAny++;cm.balAny+=r.b;}
   }
-  return Object.values(catMap).filter(c=>c.count>0);
+  return Object.values(catMap).filter(c=>c.count>0).sort((a,b)=>(a.order??99)-(b.order??99));
 }
 function aggregateByGroup() {
   const catMap={};
@@ -1170,6 +1175,8 @@ function renderSettingsBody(allProducts){
   if(settingsTab==='categories'){
     const assigned=new Set(editCategories.flatMap(c=>c.products));
     const unassigned=allProducts.filter(p=>!assigned.has(p));
+    // order 기준 정렬 (없으면 인덱스 순)
+    const sortedCats=[...editCategories].sort((a,b)=>(a.order??99)-(b.order??99));
     body.innerHTML=tabHtml+\`<div class="space-y-4">
       <div><p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미분류 상품</p>
         <div id="unassigned-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-1"
@@ -1178,7 +1185,7 @@ function renderSettingsBody(allProducts){
             unassigned.map(p=>\`<span class="product-chip unassigned" draggable="true" ondragstart="dragStart(event,'\${p}','__none__')">\${p}</span>\`).join('')}
         </div>
       </div>
-      <div class="space-y-3" id="cat-list">\${editCategories.map((cat,idx)=>renderCatCard(cat,idx,allProducts)).join('')}</div>
+      <div class="space-y-3" id="cat-list">\${sortedCats.map((cat,idx)=>renderCatCard(cat,idx,allProducts,sortedCats.length)).join('')}</div>
       <button onclick="addCategory()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-500 transition">
         <i class="fas fa-plus mr-2"></i>카테고리 추가
       </button>
@@ -1203,16 +1210,34 @@ function renderSettingsBody(allProducts){
   }
 }
 
-function renderCatCard(cat,idx,allProducts){
+function renderCatCard(cat,idx,allProducts,totalCats){
   const ap=allProducts||[];
+  const total=totalCats||editCategories.length;
   // 전체 카테고리에서 이미 배정된 상품 집합 (이 카테고리 포함)
   const allAssigned=new Set(editCategories.flatMap(c=>c.products));
   // 드롭다운에 표시할 상품: 아직 어떤 카테고리에도 배정 안 됐거나 이 카테고리 소속인 것
   const available=ap.filter(p=>!allAssigned.has(p)||cat.products.includes(p));
   // 드롭다운은 이 카테고리에 없는 것만 (이미 자신에 있으면 제외)
   const selectable=available.filter(p=>!cat.products.includes(p));
+  const curOrder=cat.order??idx+1;
   return \`<div class="cat-card" id="catcard_\${cat.id}">
     <div class="cat-header bg-gray-50" onclick="toggleCatCard('\${cat.id}')">
+      <!-- 순서 컨트롤 -->
+      <div class="flex items-center gap-1 flex-shrink-0 mr-1" onclick="event.stopPropagation()">
+        <div class="flex flex-col gap-0.5">
+          <button onclick="moveCatUp('\${cat.id}')" class="w-5 h-4 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition \${idx===0?'opacity-25 pointer-events-none':''}" title="위로">
+            <i class="fas fa-caret-up text-xs"></i>
+          </button>
+          <button onclick="moveCatDown('\${cat.id}')" class="w-5 h-4 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition \${idx===total-1?'opacity-25 pointer-events-none':''}" title="아래로">
+            <i class="fas fa-caret-down text-xs"></i>
+          </button>
+        </div>
+        <input type="number" min="1" max="\${total}" value="\${curOrder}"
+          class="w-9 h-7 text-center text-xs font-bold border border-gray-200 rounded-lg bg-white text-blue-700 outline-none focus:border-blue-400"
+          onclick="event.stopPropagation()"
+          onchange="setCatOrder('\${cat.id}', parseInt(this.value))"
+          title="표시 순서 입력 (같은 번호면 기존 항목이 뒤로 밀림)"/>
+      </div>
       <div class="cat-color-dot" style="background:\${cat.color}" onclick="event.stopPropagation();showColorPicker('\${cat.id}',event)"></div>
       <input type="text" value="\${cat.name}" class="flex-1 bg-transparent font-semibold text-gray-700 outline-none text-sm" onchange="updateCatName('\${cat.id}',this.value)" onclick="event.stopPropagation()"/>
       <span class="text-xs text-gray-400">\${cat.products.length}개 상품</span>
@@ -1289,10 +1314,62 @@ function setCatColor(catId,color){const cat=editCategories.find(c=>c.id===catId)
 function setGroupColor(grpId,color){const g=editGroups.find(g=>g.id===grpId);if(g){g.color=color;refreshSettingsBody();}}
 function updateCatName(catId,name){const cat=editCategories.find(c=>c.id===catId);if(cat)cat.name=name;}
 function updateGroupName(grpId,name){const g=editGroups.find(g=>g.id===grpId);if(g)g.name=name;}
-function removeCategory(catId){if(!confirm('삭제 시 해당 상품들이 미분류로 이동합니다.'))return;editCategories=editCategories.filter(c=>c.id!==catId);refreshSettingsBody();}
+function removeCategory(catId){if(!confirm('삭제 시 해당 상품들이 미분류로 이동합니다.'))return;editCategories=editCategories.filter(c=>c.id!==catId);reindexCatOrders();refreshSettingsBody();}
 function removeGroup(grpId){if(!confirm('그룹을 삭제하면 소속 카테고리들이 미배정으로 이동합니다.'))return;editGroups=editGroups.filter(g=>g.id!==grpId);refreshSettingsBody();}
-function addCategory(){editCategories.push({id:'c'+Date.now(),name:'새 카테고리',color:PALETTE[editCategories.length%PALETTE.length],products:[]});refreshSettingsBody();}
+function addCategory(){
+  const maxOrder=editCategories.reduce((m,c)=>Math.max(m,c.order??0),0);
+  editCategories.push({id:'c'+Date.now(),name:'새 카테고리',color:PALETTE[editCategories.length%PALETTE.length],order:maxOrder+1,products:[]});
+  refreshSettingsBody();
+}
 function addGroup(){editGroups.push({id:'g'+Date.now(),name:'새 그룹',color:GRP_PALETTE[editGroups.length%GRP_PALETTE.length],categoryIds:[]});refreshSettingsBody();}
+
+// ── 순서 재인덱싱: order 값을 1,2,3... 으로 정리
+function reindexCatOrders(){
+  const sorted=[...editCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  sorted.forEach((c,i)=>{c.order=i+1;});
+}
+
+// ── 숫자 입력 시 자동 밀기 로직
+function setCatOrder(catId, newOrder){
+  const cat=editCategories.find(c=>c.id===catId);
+  if(!cat) return;
+  const total=editCategories.length;
+  newOrder=Math.max(1,Math.min(newOrder,total)); // 범위 클램프
+  const oldOrder=cat.order??1;
+  if(newOrder===oldOrder){refreshSettingsBody();return;}
+  // 이동 방향에 따라 사이에 있는 항목들 shift
+  editCategories.forEach(c=>{
+    if(c.id===catId) return;
+    const o=c.order??1;
+    if(newOrder<oldOrder){
+      // 위로 이동: newOrder ~ oldOrder-1 범위 항목들 +1
+      if(o>=newOrder && o<oldOrder) c.order=o+1;
+    } else {
+      // 아래로 이동: oldOrder+1 ~ newOrder 범위 항목들 -1
+      if(o>oldOrder && o<=newOrder) c.order=o-1;
+    }
+  });
+  cat.order=newOrder;
+  refreshSettingsBody();
+}
+
+// ── 위/아래 버튼 이동
+function moveCatUp(catId){
+  const sorted=[...editCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  const idx=sorted.findIndex(c=>c.id===catId);
+  if(idx<=0) return;
+  const cur=sorted[idx], prev=sorted[idx-1];
+  const tmp=cur.order; cur.order=prev.order; prev.order=tmp;
+  refreshSettingsBody();
+}
+function moveCatDown(catId){
+  const sorted=[...editCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  const idx=sorted.findIndex(c=>c.id===catId);
+  if(idx<0||idx>=sorted.length-1) return;
+  const cur=sorted[idx], next=sorted[idx+1];
+  const tmp=cur.order; cur.order=next.order; next.order=tmp;
+  refreshSettingsBody();
+}
 function addProductToCatFromSelect(catId){const sel=document.getElementById('addsel_'+catId);if(!sel||!sel.value)return;const prod=sel.value;editCategories.forEach(c=>{c.products=c.products.filter(p=>p!==prod);});const cat=editCategories.find(c=>c.id===catId);if(cat&&!cat.products.includes(prod))cat.products.push(prod);refreshSettingsBody();}
 function addCatToGroupFromSelect(grpId){const sel=document.getElementById('grpaddsel_'+grpId);if(!sel||!sel.value)return;const catId=sel.value;editGroups.forEach(g=>{g.categoryIds=g.categoryIds.filter(id=>id!==catId);});const g=editGroups.find(g=>g.id===grpId);if(g&&!g.categoryIds.includes(catId))g.categoryIds.push(catId);refreshSettingsBody();}
 function removeProductFromCat(catId,prod){const cat=editCategories.find(c=>c.id===catId);if(cat){cat.products=cat.products.filter(p=>p!==prod);refreshSettingsBody();}}
@@ -1312,7 +1389,13 @@ function dragCatStart(event,catId,fromGrpId){dragCatData={catId,fromGrpId};event
 function dropCatToGroup(event,toGrpId){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragCatData)return;const{catId,fromGrpId}=dragCatData;if(fromGrpId!=='__none__'){const f=editGroups.find(g=>g.id===fromGrpId);if(f)f.categoryIds=f.categoryIds.filter(id=>id!==catId);}const t=editGroups.find(g=>g.id===toGrpId);if(t&&!t.categoryIds.includes(catId))t.categoryIds.push(catId);dragCatData=null;refreshSettingsBody();}
 function dropCatToUnassigned(event){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragCatData)return;const{catId,fromGrpId}=dragCatData;if(fromGrpId!=='__none__'){const f=editGroups.find(g=>g.id===fromGrpId);if(f)f.categoryIds=f.categoryIds.filter(id=>id!==catId);}dragCatData=null;refreshSettingsBody();}
 
-function saveCategories(){CATEGORIES=JSON.parse(JSON.stringify(editCategories));GROUPS=JSON.parse(JSON.stringify(editGroups));saveCatsToStorage();closeSettings();renderPage();}
+function saveCategories(){
+  // 저장 전 order 재정리 (1,2,3... 연속으로)
+  reindexCatOrders();
+  CATEGORIES=JSON.parse(JSON.stringify(editCategories));
+  GROUPS=JSON.parse(JSON.stringify(editGroups));
+  saveCatsToStorage();closeSettings();renderPage();
+}
 function resetCategories(){if(!confirm('카테고리 및 그룹을 기본값으로 초기화하시겠습니까?'))return;editCategories=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));editGroups=JSON.parse(JSON.stringify(DEFAULT_GROUPS));refreshSettingsBody();}
 
 // ==================== 시작 ====================
