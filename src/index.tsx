@@ -923,7 +923,7 @@ function renderOverview(el) {
 // ==================== 페이지: 잔고 구성비 ====================
 function renderBalance(el) {
   const total=LOAN.records.reduce((s,r)=>s+r.b,0);
-  const catData=aggregateByCategory();
+  const catData=aggregateByCategory().sort((a,b)=>b.balance-a.balance); // 구성비(잔액) 내림차순
   const grpData=aggregateByGroup();
   const pMap=aggregateByProduct();
   el.innerHTML=\`
