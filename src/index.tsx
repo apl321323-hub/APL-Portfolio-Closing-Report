@@ -123,12 +123,6 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
     </div>
   </div>
   <div class="flex items-center gap-3">
-    <button onclick="openUploadModal()" class="flex items-center gap-2 bg-white bg-opacity-15 hover:bg-opacity-25 transition px-3 py-1.5 rounded-lg text-sm font-medium">
-      <i class="fas fa-upload"></i> 결산자료 업로드
-    </button>
-    <button onclick="openSettings()" class="flex items-center gap-2 bg-white bg-opacity-15 hover:bg-opacity-25 transition px-3 py-1.5 rounded-lg text-sm font-medium">
-      <i class="fas fa-cog"></i> 시스템 설정
-    </button>
     <div class="text-right">
       <p class="text-xs text-blue-200">결산기준일</p>
       <p class="text-sm font-bold" id="hdr-basedate">-</p>
@@ -191,18 +185,25 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-divider"></div>
       <div class="sb-section">데이터 관리</div>
       <div class="sb-item" data-page="upload" onclick="goPage('upload')">
-        <i class="sb-icon fas fa-database"></i>
-        <span class="sb-label">월별 데이터 관리</span>
+        <i class="sb-icon fas fa-upload"></i>
+        <span class="sb-label">결산자료 업로드</span>
         <span class="sb-badge" id="sb-month-count">0</span>
       </div>
     </div>
 
     <!-- 하단: 업로드된 월 빠른 선택 -->
-    <div class="px-3 pb-4 border-t border-white border-opacity-10 pt-3">
+    <div class="px-3 pb-2 border-t border-white border-opacity-10 pt-3">
       <p class="text-xs text-blue-300 mb-2">업로드된 월</p>
       <div id="sb-month-list" class="space-y-1">
         <p class="text-xs text-blue-400 opacity-50">없음</p>
       </div>
+    </div>
+    <!-- 하단: 시스템 설정 -->
+    <div class="px-3 pb-4 border-t border-white border-opacity-10 pt-3">
+      <button onclick="openSettings()" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-white text-opacity-70 hover:bg-white hover:bg-opacity-10 transition">
+        <i class="fas fa-cog text-blue-300"></i>
+        <span>시스템 설정</span>
+      </button>
     </div>
   </aside>
 
@@ -561,8 +562,8 @@ function renderUploadPage(el) {
 <div class="space-y-5">
   <div class="flex items-center justify-between">
     <div>
-      <h2 class="text-lg font-bold">월별 데이터 관리</h2>
-      <p class="text-sm text-gray-500">결산자료(xlsx)를 월별로 업로드하고 관리합니다</p>
+      <h2 class="text-lg font-bold">결산자료 업로드</h2>
+      <p class="text-sm text-gray-500">결산자료(xlsx)를 기준월별로 업로드하고 관리합니다</p>
     </div>
     <button onclick="openUploadModal()" class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">
       <i class="fas fa-upload"></i> 새 월 업로드
