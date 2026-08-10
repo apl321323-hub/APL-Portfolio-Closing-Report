@@ -495,17 +495,17 @@ function aggregateByProduct() {
   const map = {};
   for(const r of LOAN.records){
     const p=r.p||'기타';
-    if(!map[p])map[p]={count:0,balance:0,rateWSum:0,rateBalSum:0,ltvWSum:0,ltvAppSum:0,overdue0:0,overdue10:0,overdue30:0,overdue60:0,overdue90:0,overdueMore:0,bal0:0,bal30:0};
+    if(!map[p])map[p]={count:0,balance:0,rateWSum:0,rateBalSum:0,ltvWSum:0,ltvAppSum:0,overdue0:0,overdue10:0,overdue30:0,overdue60:0,overdue90:0,overdueMore:0,bal0:0,bal10:0,bal30_:0,bal60:0,bal90:0,balMore:0};
     map[p].count++;map[p].balance+=r.b;
     if(r.r>0&&r.b>0){map[p].rateWSum+=r.b*r.r;map[p].rateBalSum+=r.b;}  // 잔액가중합
     // LTV: 담보대출/감정가 가중합 (담보상품만, appraised>0 건만)
     if(r.appraised>0&&r.loanAmt>0){map[p].ltvWSum+=r.loanAmt;map[p].ltvAppSum+=r.appraised;}
     if(r.d===0){map[p].overdue0++;map[p].bal0+=r.b;}
-    else if(r.d<=10)map[p].overdue10++;
-    else if(r.d<=30)map[p].overdue30++;
-    else if(r.d<=60)map[p].overdue60++;
-    else if(r.d<=90)map[p].overdue90++;
-    else{map[p].overdueMore++;map[p].bal30+=r.b;}
+    else if(r.d<=10){map[p].overdue10++;map[p].bal10+=r.b;}
+    else if(r.d<=30){map[p].overdue30++;map[p].bal30_+=r.b;}
+    else if(r.d<=60){map[p].overdue60++;map[p].bal60+=r.b;}
+    else if(r.d<=90){map[p].overdue90++;map[p].bal90+=r.b;}
+    else{map[p].overdueMore++;map[p].balMore+=r.b;}
   }
   return map;
 }
@@ -1021,15 +1021,22 @@ function renderProduct(el) {
   <div class="card p-5">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-blue-500"></i>상품별 종합 현황</h3>
     <div class="overflow-auto">
-      <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>정상</th><th>10일↓</th><th>30일↓</th><th>90일↑</th></tr></thead>
+      <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>정상</th><th>1~10일(%)</th><th>11~30일(%)</th><th>90일초과(%)</th></tr></thead>
       <tbody>\${pArr.map(([p,v],i)=>{
         const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
         // 평균LTV: 담보론, 담보론(지분대출), 토마토토탈론, 토마토토탈론플러스만 표시 — Σ담보대출 / Σ감정가 × 100
         const isColPrd=(p==='담보론'||p==='담보론(지분대출)'||p==='토마토토탈론'||p==='토마토토탈론플러스');
         const avgLtv=isColPrd&&v.ltvAppSum>0?(v.ltvWSum/v.ltvAppSum*100).toFixed(1):'-';
+        // 연체율: 각 구간 잔액 / 상품 총잔액 × 100
+        const od10r =v.balance>0?(v.bal10  /v.balance*100).toFixed(2):'0.00';
+        const od30r =v.balance>0?(v.bal30_ /v.balance*100).toFixed(2):'0.00';
+        const odMorer=v.balance>0?((v.bal60+v.bal90+v.balMore)/v.balance*100).toFixed(2):'0.00';
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${p}</td><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
         <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td><td>\${pct}%</td><td>\${avgR}%</td><td>\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
-        <td class="text-green-600">\${fmtN(v.overdue0)}</td><td>\${fmtN(v.overdue10)}</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="text-red-600 font-bold">\${fmtN(v.overdueMore)}</td></tr>\`;}).join('')}
+        <td class="text-green-600">\${fmtN(v.overdue0)}</td>
+        <td class="\${parseFloat(od10r)>0?'text-yellow-600':''}">\${od10r}%</td>
+        <td class="\${parseFloat(od30r)>=1?'text-orange-500':parseFloat(od30r)>0?'text-yellow-600':''}">\${od30r}%</td>
+        <td class="\${parseFloat(odMorer)>=1?'text-red-600 font-bold':parseFloat(odMorer)>0?'text-orange-500':''}">\${odMorer}%</td></tr>\`;}).join('')}
       </tbody></table>
     </div>
   </div>
