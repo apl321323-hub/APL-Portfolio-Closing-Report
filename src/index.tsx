@@ -1021,22 +1021,24 @@ function renderProduct(el) {
   <div class="card p-5">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-blue-500"></i>상품별 종합 현황</h3>
     <div class="overflow-auto">
-      <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>정상</th><th>1~10일(%)</th><th>11~30일(%)</th><th>90일초과(%)</th></tr></thead>
+      <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>10일초과 연체금</th><th>10일초과(%)</th><th>30일초과(%)</th><th>90일초과(%)</th></tr></thead>
       <tbody>\${pArr.map(([p,v],i)=>{
         const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
         // 평균LTV: 담보론, 담보론(지분대출), 토마토토탈론, 토마토토탈론플러스만 표시 — Σ담보대출 / Σ감정가 × 100
         const isColPrd=(p==='담보론'||p==='담보론(지분대출)'||p==='토마토토탈론'||p==='토마토토탈론플러스');
         const avgLtv=isColPrd&&v.ltvAppSum>0?(v.ltvWSum/v.ltvAppSum*100).toFixed(1):'-';
-        // 연체율: 각 구간 잔액 / 상품 총잔액 × 100
-        const od10r =v.balance>0?(v.bal10  /v.balance*100).toFixed(2):'0.00';
-        const od30r =v.balance>0?(v.bal30_ /v.balance*100).toFixed(2):'0.00';
-        const odMorer=v.balance>0?((v.bal60+v.bal90+v.balMore)/v.balance*100).toFixed(2):'0.00';
+        // 10일초과 연체금 (11일 이상 전체 잔액 합계)
+        const bal10Over = v.bal30_+v.bal60+v.bal90+v.balMore;
+        // 연체율: 각 기준 초과 잔액 / 상품 총잔액 × 100
+        const od10r  = v.balance>0?(bal10Over                    /v.balance*100).toFixed(2):'0.00'; // 10일 초과
+        const od30r  = v.balance>0?((v.bal60+v.bal90+v.balMore) /v.balance*100).toFixed(2):'0.00'; // 30일 초과
+        const od90r  = v.balance>0?(v.balMore                   /v.balance*100).toFixed(2):'0.00'; // 90일 초과
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${p}</td><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
         <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td><td>\${pct}%</td><td>\${avgR}%</td><td>\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
-        <td class="text-green-600">\${fmtN(v.overdue0)}</td>
-        <td class="\${parseFloat(od10r)>0?'text-yellow-600':''}">\${od10r}%</td>
-        <td class="\${parseFloat(od30r)>=1?'text-orange-500':parseFloat(od30r)>0?'text-yellow-600':''}">\${od30r}%</td>
-        <td class="\${parseFloat(odMorer)>=1?'text-red-600 font-bold':parseFloat(odMorer)>0?'text-orange-500':''}">\${odMorer}%</td></tr>\`;}).join('')}
+        <td class="\${bal10Over>0?'text-orange-500 font-semibold':''}">\${bal10Over>0?fmtAmt(bal10Over):'-'}</td>
+        <td class="\${parseFloat(od10r)>=1?'text-orange-500':parseFloat(od10r)>0?'text-yellow-600':''}">\${od10r}%</td>
+        <td class="\${parseFloat(od30r)>=1?'text-orange-500 font-bold':parseFloat(od30r)>0?'text-yellow-600':''}">\${od30r}%</td>
+        <td class="\${parseFloat(od90r)>=1?'text-red-600 font-bold':parseFloat(od90r)>0?'text-orange-500':''}">\${od90r}%</td></tr>\`;}).join('')}
       </tbody></table>
     </div>
   </div>
