@@ -1,1 +1,1 @@
-{"version":1,"include":["/*"],"exclude":["/data.json","/loan_data.json","/favicon.ico","/static/*"]}
+{"version":1,"include":["/*"],"exclude":["/data.json","/loan_data.json","/contract_202607.json","/favicon.ico","/static/*"]}
