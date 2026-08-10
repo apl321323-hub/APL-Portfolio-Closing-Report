@@ -720,10 +720,6 @@ function renderUploadPage(el) {
 </div>\`;
 }
 
-  </div>
-</div>\`;
-}
-
 // ==================== 계약리스트 스토리지 ====================
 function getContractDB() {
   try { return JSON.parse(localStorage.getItem(CONTRACT_DB_KEY) || '{}'); } catch(e){ return {}; }
@@ -1046,9 +1042,6 @@ function saveContractData() {
   if(badge) badge.textContent = Object.keys(db).length;
   closeContractModal();
   renderContractPage(document.getElementById('main-content'));
-}
-  await loadMonthData(yyyymm);
-  goPage('overview');
 }
 
 function deleteMonth(yyyymm) {
