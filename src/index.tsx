@@ -1205,6 +1205,12 @@ function renderSettingsBody(allProducts){
 
 function renderCatCard(cat,idx,allProducts){
   const ap=allProducts||[];
+  // 전체 카테고리에서 이미 배정된 상품 집합 (이 카테고리 포함)
+  const allAssigned=new Set(editCategories.flatMap(c=>c.products));
+  // 드롭다운에 표시할 상품: 아직 어떤 카테고리에도 배정 안 됐거나 이 카테고리 소속인 것
+  const available=ap.filter(p=>!allAssigned.has(p)||cat.products.includes(p));
+  // 드롭다운은 이 카테고리에 없는 것만 (이미 자신에 있으면 제외)
+  const selectable=available.filter(p=>!cat.products.includes(p));
   return \`<div class="cat-card" id="catcard_\${cat.id}">
     <div class="cat-header bg-gray-50" onclick="toggleCatCard('\${cat.id}')">
       <div class="cat-color-dot" style="background:\${cat.color}" onclick="event.stopPropagation();showColorPicker('\${cat.id}',event)"></div>
@@ -1220,11 +1226,11 @@ function renderCatCard(cat,idx,allProducts){
           cat.products.map(p=>\`<span class="product-chip assigned" style="background:\${cat.color};border-color:\${cat.color}" draggable="true" ondragstart="dragStart(event,'\${p}','\${cat.id}')" onclick="removeProductFromCat('\${cat.id}','\${p}')" title="클릭하여 제거">\${p} <i class="fas fa-times text-xs opacity-70"></i></span>\`).join('')}
       </div>
       <div class="mt-2 flex gap-2">
-        <select id="addsel_\${cat.id}" class="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none">
-          <option value="">+ 상품 추가...</option>
-          \${ap.filter(p=>!cat.products.includes(p)).map(p=>\`<option value="\${p}">\${p}</option>\`).join('')}
+        <select id="addsel_\${cat.id}" class="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none \${selectable.length===0?'opacity-50':''}">
+          <option value="">\${selectable.length===0?'배정 가능한 상품 없음':'+ 상품 추가...'}</option>
+          \${selectable.map(p=>\`<option value="\${p}">\${p}</option>\`).join('')}
         </select>
-        <button onclick="addProductToCatFromSelect('\${cat.id}')" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">추가</button>
+        <button onclick="addProductToCatFromSelect('\${cat.id}')" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40" \${selectable.length===0?'disabled':''}>추가</button>
       </div>
     </div>
   </div>\`;
@@ -1294,7 +1300,11 @@ function removeCatFromGroup(grpId,catId){const g=editGroups.find(g=>g.id===grpId
 
 let dragData=null;
 function dragStart(event,product,fromCatId){dragData={product,fromCatId};event.dataTransfer.effectAllowed='move';}
-function dropToCategory(event,toCatId){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragData)return;const{product,fromCatId}=dragData;if(fromCatId!=='__none__'){const f=editCategories.find(c=>c.id===fromCatId);if(f)f.products=f.products.filter(p=>p!==product);}const t=editCategories.find(c=>c.id===toCatId);if(t&&!t.products.includes(product))t.products.push(product);dragData=null;refreshSettingsBody();}
+function dropToCategory(event,toCatId){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragData)return;const{product,fromCatId}=dragData;
+  // 기존 모든 카테고리에서 해당 상품 제거 (중복 방지)
+  editCategories.forEach(c=>{c.products=c.products.filter(p=>p!==product);});
+  // 목적 카테고리에만 추가
+  const t=editCategories.find(c=>c.id===toCatId);if(t)t.products.push(product);dragData=null;refreshSettingsBody();}
 function dropToUnassigned(event){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragData)return;const{product,fromCatId}=dragData;if(fromCatId!=='__none__'){const f=editCategories.find(c=>c.id===fromCatId);if(f)f.products=f.products.filter(p=>p!==product);}dragData=null;refreshSettingsBody();}
 
 let dragCatData=null;
