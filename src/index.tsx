@@ -523,7 +523,7 @@ function aggregateByAgent() {
 function aggregateByCategory() {
   const catMap={};
   const allCats=[...CATEGORIES,{id:'__none__',name:'미분류',color:'#9ca3af',products:[]}];
-  for(const cat of allCats)catMap[cat.id]={...cat,count:0,balance:0,rateWSum:0,rateBalSum:0,ltvWSum:0,ltvAppSum:0,overdue0:0,overdueAny:0,bal0:0,balAny:0};
+  for(const cat of allCats)catMap[cat.id]={...cat,count:0,balance:0,rateWSum:0,rateBalSum:0,ltvWSum:0,ltvAppSum:0,overdue0:0,overdueAny:0,bal0:0,balAny:0,bal10Over:0,bal30Over:0,bal90Over:0};
   for(const r of LOAN.records){
     const cat=getCategoryOfProduct(r.p);
     const cm=catMap[cat.id];if(!cm)continue;
@@ -532,6 +532,9 @@ function aggregateByCategory() {
     // LTV: 담보대출/감정가 가중합 (담보상품만)
     if(r.appraised>0&&r.loanAmt>0){cm.ltvWSum+=r.loanAmt;cm.ltvAppSum+=r.appraised;}
     if(r.d===0){cm.overdue0++;cm.bal0+=r.b;}else{cm.overdueAny++;cm.balAny+=r.b;}
+    if(r.d>10){cm.bal10Over+=r.b;}
+    if(r.d>30){cm.bal30Over+=r.b;}
+    if(r.d>90){cm.bal90Over+=r.b;}
   }
   return Object.values(catMap).filter(c=>c.count>0).sort((a,b)=>(a.order??99)-(b.order??99));
 }
@@ -951,23 +954,42 @@ function renderBalance(el) {
   <div>
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
-  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-    \${catData.map(c=>{const pct=(c.balance/total*100);const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';const avgLtv=c.ltvAppSum>0?(c.ltvWSum/c.ltvAppSum*100).toFixed(1):'-';const odRate=c.count>0?((c.overdueAny/c.count)*100).toFixed(1):'0';
-    return \`<div class="card p-5">
-      <div class="flex items-start justify-between mb-3">
-        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm" style="background:\${c.color}"></div><span class="font-bold text-gray-800">\${c.name}</span></div>
-        <span class="text-2xl font-bold" style="color:\${c.color}">\${pct.toFixed(1)}%</span>
-      </div>
-      <div class="progress-bar mb-3"><div class="progress-fill" style="width:\${Math.min(pct,100)}%;background:\${c.color}"></div></div>
-      <div class="grid grid-cols-2 gap-2 text-xs mb-3">
-        <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">잔고금액</p><p class="font-bold text-sm">\${fmtAmt(c.balance)}</p></div>
-        <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">건수</p><p class="font-bold text-sm">\${fmtN(c.count)}건</p></div>
-        <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">평균금리</p><p class="font-bold text-sm">\${avgR}%</p></div>
-        <div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">연체율</p><p class="font-bold text-sm \${parseFloat(odRate)>=5?'text-red-600':parseFloat(odRate)>=3?'text-orange-500':'text-green-600'}">\${odRate}%</p></div>
-        \${c.ltvAppSum>0?\`<div class="bg-gray-50 rounded-lg p-2"><p class="text-gray-400">평균LTV</p><p class="font-bold text-sm">\${avgLtv}%</p></div>\`:''}
-      </div>
-      <div class="flex flex-wrap gap-1">\${c.products.map(p=>\`<span class="text-xs px-2 py-0.5 rounded-full text-white" style="background:\${c.color}cc">\${p}</span>\`).join('')}</div>
-    </div>\`;}).join('')}
+  <div class="card overflow-hidden">
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:130px">상품구분</th>
+        <th class="text-right">구성비</th>
+        <th class="text-right">잔고금액</th>
+        <th class="text-right">건수</th>
+        <th class="text-right">평균금리</th>
+        <th class="text-right">평균LTV</th>
+        <th class="text-right">10일초과 연체율</th>
+        <th class="text-right">30일초과 연체율</th>
+        <th class="text-right">90일초과 연체율</th>
+        <th>상품명</th>
+      </tr></thead>
+      <tbody>\${catData.map(c=>{
+        const pct=(c.balance/total*100);
+        const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
+        const avgLtv=c.ltvAppSum>0?(c.ltvWSum/c.ltvAppSum*100).toFixed(1):'-';
+        const od10r=c.balance>0?(c.bal10Over/c.balance*100).toFixed(2):'0.00';
+        const od30r=c.balance>0?(c.bal30Over/c.balance*100).toFixed(2):'0.00';
+        const od90r=c.balance>0?(c.bal90Over/c.balance*100).toFixed(2):'0.00';
+        return \`<tr>
+          <td><div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div><span class="font-bold text-gray-800">\${c.name}</span></div></td>
+          <td class="text-right"><span class="font-bold text-base" style="color:\${c.color}">\${pct.toFixed(1)}%</span><div class="progress-bar mt-1" style="height:4px"><div class="progress-fill" style="width:\${Math.min(pct,100)}%;background:\${c.color}"></div></div></td>
+          <td class="text-right font-semibold">\${fmtAmt(c.balance)}</td>
+          <td class="text-right">\${fmtN(c.count)}건</td>
+          <td class="text-right">\${avgR}%</td>
+          <td class="text-right">\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
+          <td class="text-right \${parseFloat(od10r)>=3?'text-red-600 font-bold':parseFloat(od10r)>=1?'text-orange-500':parseFloat(od10r)>0?'text-yellow-600':''}">\${od10r}%</td>
+          <td class="text-right \${parseFloat(od30r)>=3?'text-red-600 font-bold':parseFloat(od30r)>=1?'text-orange-500':parseFloat(od30r)>0?'text-yellow-600':''}">\${od30r}%</td>
+          <td class="text-right \${parseFloat(od90r)>=1?'text-red-600 font-bold':parseFloat(od90r)>0?'text-orange-500':''}">\${od90r}%</td>
+          <td><div class="flex flex-wrap gap-1">\${c.products.map(p=>\`<span class="text-xs px-2 py-0.5 rounded-full text-white" style="background:\${c.color}cc">\${p}</span>\`).join('')}</div></td>
+        </tr>\`;
+      }).join('')}
+      </tbody>
+    </table>
   </div>
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
     <div class="card p-5 lg:col-span-2">
