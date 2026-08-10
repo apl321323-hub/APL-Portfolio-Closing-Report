@@ -10,12 +10,12 @@ app.get('/', (c) => {
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>APL 마감 보고 대시보드</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css"/>
+<script src="/static/vendor/tailwind.min.js"></script>
+<script src="/static/vendor/chart.min.js"></script>
+<script src="/static/vendor/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="/static/vendor/fa.min.css"/>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+
 *{font-family:'Noto Sans KR',sans-serif;box-sizing:border-box;}
 :root{--primary:#1e3a5f;--pl:#2d5a9e;--accent:#e63946;--bg:#f0f4f8;--card:#fff;--bdr:#dde3ec;--txt:#1a2332;--sub:#6b7a99;--green:#059669;--orange:#d97706;--red:#dc2626;--sidebar:220px;}
 body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column;}
@@ -452,20 +452,12 @@ async function init() {
 
     loadCategoriesFromStorage();
 
-    // 2. IndexedDB에 저장된 가장 최신 월 로드 시도
+    // 2. localStorage에 저장된 가장 최신 월 로드
     const months = getMonthKeys();
     if (months.length > 0) {
       await loadMonthData(months[0]);
-    } else {
-      // fallback: 기존 loan_data.json (5초 타임아웃)
-      try {
-        const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 5000);
-        const r = await fetch('/loan_data.json', { signal: ctrl.signal });
-        clearTimeout(tid);
-        LOAN = await r.json();
-      } catch(e) { console.warn('loan_data.json 로드 실패:', e.message); }
     }
+    // loan_data.json fallback 제거 - 데이터 없으면 업로드 유도 화면 표시
 
     if (LOAN) {
       document.getElementById('hdr-date').textContent = '마감: ' + LOAN.base_date + ' | 추이: ' + (TREND?.generated_at || '-');
