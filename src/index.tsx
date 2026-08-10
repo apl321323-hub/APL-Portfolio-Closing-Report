@@ -190,6 +190,13 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
         <span class="sb-label">계약리스트 업로드</span>
         <span class="sb-badge" id="sb-contract-count">0</span>
       </div>
+
+      <div class="sb-divider"></div>
+      <div class="sb-section">시스템</div>
+      <div class="sb-item" data-page="settings" onclick="goPage('settings')">
+        <i class="sb-icon fas fa-cog"></i>
+        <span class="sb-label">시스템 설정</span>
+      </div>
     </div>
 
     <!-- 하단: 업로드된 월 빠른 선택 -->
@@ -198,13 +205,6 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div id="sb-month-list" class="space-y-1">
         <p class="text-xs text-blue-400 opacity-50">없음</p>
       </div>
-    </div>
-    <!-- 하단: 시스템 설정 -->
-    <div class="px-3 pb-4 border-t border-white border-opacity-10 pt-3">
-      <button onclick="openSettings()" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-white text-opacity-70 hover:bg-white hover:bg-opacity-10 transition">
-        <i class="fas fa-cog text-blue-300"></i>
-        <span>시스템 설정</span>
-      </button>
     </div>
   </aside>
 
@@ -351,30 +351,6 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
   </div>
 </div>
 
-<!-- ====== 시스템 설정 모달 ====== -->
-<div class="modal-overlay" id="settings-modal">
-  <div class="modal">
-    <div class="modal-header flex items-center justify-between w-full">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:#eff6ff">
-          <i class="fas fa-cog text-blue-600"></i>
-        </div>
-        <div>
-          <h2 class="font-bold text-gray-800">시스템 설정 — 상품 구분 관리</h2>
-          <p class="text-xs text-gray-500">상품을 카테고리·그룹으로 묶어 잔고 구성비를 분석합니다</p>
-        </div>
-      </div>
-      <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600 ml-4"><i class="fas fa-times text-xl"></i></button>
-    </div>
-    <div class="modal-body" id="settings-body"></div>
-    <div class="modal-footer">
-      <button onclick="resetCategories()" class="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50">초기화</button>
-      <button onclick="closeSettings()" class="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">취소</button>
-      <button onclick="saveCategories()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700">저장 적용</button>
-    </div>
-  </div>
-</div>
-
 <script>
 // ==================== 전역 상태 ====================
 let LOAN = null;       // 현재 선택된 월 결산 데이터
@@ -407,6 +383,24 @@ let GROUPS = [];
 let editCategories = [];
 let editGroups = [];
 let settingsTab = 'categories';
+
+// ==================== 에이전트 카테고리 설정 ====================
+const DEFAULT_AGENT_CATEGORIES = [
+  { id:'ac1', name:'본사영업',    color:'#2563eb', order:1, agents:['본사영업','CALL인입','본사직영'] },
+  { id:'ac2', name:'온라인플랫폼',color:'#059669', order:2, agents:['원클플랫폼','알다플랫폼','팀다플랫폼','핀다플랫폼','웰컴플랫폼','오케이다이렉트대부'] },
+  { id:'ac3', name:'오프라인제휴',color:'#7c3aed', order:3, agents:['대리점','지점제휴','법인제휴'] },
+  { id:'ac4', name:'기타',        color:'#6b7280', order:4, agents:['기타'] },
+];
+const DEFAULT_AGENT_GROUPS = [
+  { id:'ag1', name:'직접채널',   color:'#1e40af', categoryIds:['ac1'] },
+  { id:'ag2', name:'간접채널',   color:'#065f46', categoryIds:['ac2','ac3'] },
+  { id:'ag3', name:'기타',       color:'#374151', categoryIds:['ac4'] },
+];
+let AGENT_CATEGORIES = [];
+let AGENT_GROUPS = [];
+let editAgentCategories = [];
+let editAgentGroups = [];
+let settingsAgentTab = 'categories';
 
 // ==================== IndexedDB 헬퍼 ====================
 function getMonthsDB() {
@@ -530,7 +524,7 @@ function goPage(page) {
 function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
-  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract') {
+  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings') {
     el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
       <i class="fas fa-cloud-upload-alt text-5xl text-blue-200"></i>
       <p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>
@@ -550,6 +544,7 @@ function renderPage() {
     case 'trend':    renderTrend(el);    break;
     case 'upload':    renderUploadPage(el);    break;
     case 'contract':  renderContractPage(el);  break;
+    case 'settings':  renderSettingsPage(el);  break;
   }
 }
 
@@ -573,13 +568,26 @@ function loadCategoriesFromStorage() {
     CATEGORIES.forEach((c,i)=>{ if(c.order==null) c.order=i+1; });
   }catch(e){CATEGORIES=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));}
   try{const s=localStorage.getItem('apl_groups_v1');GROUPS=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_GROUPS));}catch(e){GROUPS=JSON.parse(JSON.stringify(DEFAULT_GROUPS));}
+  // 에이전트 카테고리
+  try{
+    const s=localStorage.getItem('apl_agent_cats_v1');
+    AGENT_CATEGORIES=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_AGENT_CATEGORIES));
+    AGENT_CATEGORIES.forEach((c,i)=>{ if(c.order==null) c.order=i+1; });
+  }catch(e){AGENT_CATEGORIES=JSON.parse(JSON.stringify(DEFAULT_AGENT_CATEGORIES));}
+  try{const s=localStorage.getItem('apl_agent_groups_v1');AGENT_GROUPS=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));}catch(e){AGENT_GROUPS=JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));}
 }
 function saveCatsToStorage(){
   localStorage.setItem('apl_categories_v2',JSON.stringify(CATEGORIES));
   localStorage.setItem('apl_groups_v1',JSON.stringify(GROUPS));
 }
+function saveAgentCatsToStorage(){
+  localStorage.setItem('apl_agent_cats_v1',JSON.stringify(AGENT_CATEGORIES));
+  localStorage.setItem('apl_agent_groups_v1',JSON.stringify(AGENT_GROUPS));
+}
 function getGroupOfCategory(catId){for(const g of GROUPS)if(g.categoryIds.includes(catId))return g;return{id:'__none__',name:'미배정',color:'#9ca3af'};}
 function getCategoryOfProduct(pname){for(const cat of CATEGORIES)if(cat.products.includes(pname))return cat;return{id:'__none__',name:'미분류',color:'#9ca3af'};}
+function getAgentGroupOfCategory(catId){for(const g of AGENT_GROUPS)if(g.categoryIds.includes(catId))return g;return{id:'__none__',name:'미배정',color:'#9ca3af'};}
+function getCategoryOfAgent(aname){for(const cat of AGENT_CATEGORIES)if(cat.agents.includes(aname))return cat;return{id:'__none__',name:'미분류',color:'#9ca3af'};}
 
 function aggregateByProduct() {
   const map = {};
@@ -1607,72 +1615,360 @@ function renderTrend(el) {
   },50);
 }
 
-// ==================== 시스템 설정 모달 ====================
+// ==================== 페이지: 시스템 설정 ====================
 const PALETTE=['#2563eb','#059669','#7c3aed','#d97706','#0891b2','#dc2626','#6366f1','#0d9488','#c026d3','#ea580c','#84cc16','#64748b','#be185d','#92400e','#1d4ed8','#15803d'];
 const GRP_PALETTE=['#1e40af','#065f46','#374151','#7e22ce','#92400e','#9f1239','#0369a1','#166534','#1d4ed8','#15803d','#a16207','#334155'];
 
-function openSettings(){
-  editCategories=JSON.parse(JSON.stringify(CATEGORIES));
-  editGroups=JSON.parse(JSON.stringify(GROUPS));
-  settingsTab='categories';
-  const ap=LOAN?[...new Set(LOAN.records.map(r=>r.p))].sort():[];
-  renderSettingsBody(ap);
-  document.getElementById('settings-modal').classList.add('open');
-}
-function openSettingsOnGroupTab(){
-  editCategories=JSON.parse(JSON.stringify(CATEGORIES));
-  editGroups=JSON.parse(JSON.stringify(GROUPS));
-  settingsTab='groups';
-  const ap=LOAN?[...new Set(LOAN.records.map(r=>r.p))].sort():[];
-  renderSettingsBody(ap);
-  document.getElementById('settings-modal').classList.add('open');
-}
-function closeSettings(){document.getElementById('settings-modal').classList.remove('open');}
-function switchSettingsTab(tab){settingsTab=tab;const ap=LOAN?[...new Set(LOAN.records.map(r=>r.p))].sort():[];renderSettingsBody(ap);}
+// ── 설정 페이지 진입 탭 상태 ('product_cats' | 'product_groups' | 'agent_cats' | 'agent_groups')
+let settingsMainTab = 'product_cats';
 
-function renderSettingsBody(allProducts){
-  const body=document.getElementById('settings-body');
-  const tabHtml=\`<div class="flex gap-1 mb-5 bg-gray-100 p-1 rounded-xl">
-    <button onclick="switchSettingsTab('categories')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition \${settingsTab==='categories'?'bg-white text-blue-700 shadow':'text-gray-500 hover:text-gray-700'}"><i class="fas fa-tags mr-1.5"></i>카테고리 (하위)</button>
-    <button onclick="switchSettingsTab('groups')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition \${settingsTab==='groups'?'bg-white text-blue-700 shadow':'text-gray-500 hover:text-gray-700'}"><i class="fas fa-layer-group mr-1.5"></i>상위 카테고리 (그룹)</button>
-  </div>\`;
-  if(settingsTab==='categories'){
-    const assigned=new Set(editCategories.flatMap(c=>c.products));
-    const unassigned=allProducts.filter(p=>!assigned.has(p));
-    // order 기준 정렬 (없으면 인덱스 순)
-    const sortedCats=[...editCategories].sort((a,b)=>(a.order??99)-(b.order??99));
-    body.innerHTML=tabHtml+\`<div class="space-y-4">
-      <div><p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미분류 상품</p>
-        <div id="unassigned-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-1"
-          ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropToUnassigned(event)">
-          \${unassigned.length===0?'<span class="text-xs text-gray-400">모든 상품이 카테고리에 배정됨</span>':
-            unassigned.map(p=>\`<span class="product-chip unassigned" draggable="true" ondragstart="dragStart(event,'\${p}','__none__')">\${p}</span>\`).join('')}
-        </div>
-      </div>
-      <div class="space-y-3" id="cat-list">\${sortedCats.map((cat,idx)=>renderCatCard(cat,idx,allProducts,sortedCats.length)).join('')}</div>
-      <button onclick="addCategory()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-500 transition">
-        <i class="fas fa-plus mr-2"></i>카테고리 추가
-      </button>
-    </div>\`;
-  } else {
-    const assignedCatIds=new Set(editGroups.flatMap(g=>g.categoryIds));
-    const unassignedCats=editCategories.filter(c=>!assignedCatIds.has(c.id));
-    body.innerHTML=tabHtml+\`<div class="space-y-4">
-      <p class="text-xs text-gray-500">카테고리를 드래그하거나 선택하여 상위 그룹에 배정합니다.</p>
-      <div><p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미배정 카테고리</p>
-        <div id="unassigned-cat-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-2"
-          ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropCatToUnassigned(event)">
-          \${unassignedCats.length===0?'<span class="text-xs text-gray-400">모든 카테고리가 그룹에 배정됨</span>':
-            unassignedCats.map(c=>\`<span class="product-chip assigned" style="background:\${c.color};border-color:\${c.color}" draggable="true" ondragstart="dragCatStart(event,'\${c.id}','__none__')">\${c.name}</span>\`).join('')}
-        </div>
-      </div>
-      <div class="space-y-3" id="grp-list">\${editGroups.map((g,idx)=>renderGroupCard(g,idx)).join('')}</div>
-      <button onclick="addGroup()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-purple-300 hover:text-purple-500 transition">
-        <i class="fas fa-plus mr-2"></i>상위 카테고리(그룹) 추가
-      </button>
-    </div>\`;
-  }
+function renderSettingsPage(el) {
+  editCategories = JSON.parse(JSON.stringify(CATEGORIES));
+  editGroups     = JSON.parse(JSON.stringify(GROUPS));
+  editAgentCategories = JSON.parse(JSON.stringify(AGENT_CATEGORIES));
+  editAgentGroups     = JSON.parse(JSON.stringify(AGENT_GROUPS));
+  _renderSettingsPageBody(el);
 }
+
+function _renderSettingsPageBody(el) {
+  const ap  = LOAN ? [...new Set(LOAN.records.map(r=>r.p))].sort() : [];
+  const aa  = LOAN ? [...new Set(LOAN.records.map(r=>r.a))].sort() : [];
+
+  const mainTabs = [
+    { key:'product_cats',   icon:'fas fa-tags',        label:'상품 카테고리' },
+    { key:'product_groups', icon:'fas fa-layer-group', label:'상품 그룹' },
+    { key:'agent_cats',     icon:'fas fa-user-tag',    label:'에이전트 카테고리' },
+    { key:'agent_groups',   icon:'fas fa-sitemap',     label:'에이전트 그룹' },
+  ];
+
+  const tabBarHtml = \`<div class="flex gap-1 mb-6 bg-gray-100 p-1 rounded-xl">
+    \${mainTabs.map(t=>\`<button onclick="switchSettingsMainTab('\${t.key}')"
+      class="flex-1 py-2.5 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-1.5
+             \${settingsMainTab===t.key?'bg-white text-blue-700 shadow':'text-gray-500 hover:text-gray-700'}">
+      <i class="\${t.icon} text-xs"></i>\${t.label}
+    </button>\`).join('')}
+  </div>\`;
+
+  let bodyHtml = '';
+  if (settingsMainTab === 'product_cats') {
+    bodyHtml = _renderProductCatsBody(ap);
+  } else if (settingsMainTab === 'product_groups') {
+    bodyHtml = _renderProductGroupsBody();
+  } else if (settingsMainTab === 'agent_cats') {
+    bodyHtml = _renderAgentCatsBody(aa);
+  } else {
+    bodyHtml = _renderAgentGroupsBody();
+  }
+
+  const actionHtml = \`<div class="flex justify-between items-center mt-6 pt-5 border-t border-gray-200">
+    <button onclick="resetCurrentSettingsTab()" class="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50">
+      <i class="fas fa-undo mr-1.5"></i>초기화
+    </button>
+    <button onclick="saveCurrentSettingsTab()" class="px-6 py-2.5 text-sm bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700">
+      <i class="fas fa-save mr-1.5"></i>저장 적용
+    </button>
+  </div>\`;
+
+  el.innerHTML = \`<div class="space-y-2 max-w-4xl mx-auto">
+    <div class="flex items-center gap-3 mb-5">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50">
+        <i class="fas fa-cog text-blue-600 text-lg"></i>
+      </div>
+      <div>
+        <h2 class="text-lg font-bold">시스템 설정</h2>
+        <p class="text-sm text-gray-500">상품 구분 및 에이전트(광고매체)를 카테고리·그룹으로 관리합니다</p>
+      </div>
+    </div>
+    <div class="card p-6" id="settings-page-card">
+      \${tabBarHtml}
+      <div id="settings-page-body">\${bodyHtml}</div>
+      \${actionHtml}
+    </div>
+  </div>\`;
+}
+
+function switchSettingsMainTab(tab) {
+  settingsMainTab = tab;
+  const el = document.getElementById('main-content');
+  _renderSettingsPageBody(el);
+}
+
+function saveCurrentSettingsTab() {
+  if (settingsMainTab === 'product_cats' || settingsMainTab === 'product_groups') {
+    reindexCatOrders();
+    CATEGORIES = JSON.parse(JSON.stringify(editCategories));
+    GROUPS     = JSON.parse(JSON.stringify(editGroups));
+    saveCatsToStorage();
+  } else {
+    reindexAgentCatOrders();
+    AGENT_CATEGORIES = JSON.parse(JSON.stringify(editAgentCategories));
+    AGENT_GROUPS     = JSON.parse(JSON.stringify(editAgentGroups));
+    saveAgentCatsToStorage();
+  }
+  const el = document.getElementById('main-content');
+  _renderSettingsPageBody(el);
+  alert('저장되었습니다.');
+}
+
+function resetCurrentSettingsTab() {
+  if (!confirm('현재 탭을 기본값으로 초기화하시겠습니까?')) return;
+  if (settingsMainTab === 'product_cats' || settingsMainTab === 'product_groups') {
+    editCategories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    editGroups     = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+  } else {
+    editAgentCategories = JSON.parse(JSON.stringify(DEFAULT_AGENT_CATEGORIES));
+    editAgentGroups     = JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));
+  }
+  const el = document.getElementById('main-content');
+  _renderSettingsPageBody(el);
+}
+
+// ── 상품 카테고리 탭 HTML
+function _renderProductCatsBody(allProducts) {
+  const assigned   = new Set(editCategories.flatMap(c=>c.products));
+  const unassigned = allProducts.filter(p=>!assigned.has(p));
+  const sortedCats = [...editCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  return \`<div class="space-y-4">
+    <p class="text-xs text-gray-500">상품을 카테고리로 분류합니다. 드래그하거나 드롭다운으로 배정하세요.</p>
+    <div>
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미분류 상품</p>
+      <div id="unassigned-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-1"
+        ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropToUnassigned(event)">
+        \${unassigned.length===0?'<span class="text-xs text-gray-400">모든 상품이 카테고리에 배정됨</span>':
+          unassigned.map(p=>\`<span class="product-chip unassigned" draggable="true" ondragstart="dragStart(event,'\${p}','__none__')">\${p}</span>\`).join('')}
+      </div>
+    </div>
+    <div class="space-y-3" id="cat-list">\${sortedCats.map((cat,idx)=>renderCatCard(cat,idx,allProducts,sortedCats.length)).join('')}</div>
+    <button onclick="addCategory()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-500 transition">
+      <i class="fas fa-plus mr-2"></i>카테고리 추가
+    </button>
+  </div>\`;
+}
+
+// ── 상품 그룹 탭 HTML
+function _renderProductGroupsBody() {
+  const assignedCatIds = new Set(editGroups.flatMap(g=>g.categoryIds));
+  const unassignedCats = editCategories.filter(c=>!assignedCatIds.has(c.id));
+  return \`<div class="space-y-4">
+    <p class="text-xs text-gray-500">카테고리를 드래그하거나 선택하여 상위 그룹에 배정합니다.</p>
+    <div>
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미배정 카테고리</p>
+      <div id="unassigned-cat-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-2"
+        ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropCatToUnassigned(event)">
+        \${unassignedCats.length===0?'<span class="text-xs text-gray-400">모든 카테고리가 그룹에 배정됨</span>':
+          unassignedCats.map(c=>\`<span class="product-chip assigned" style="background:\${c.color};border-color:\${c.color}" draggable="true" ondragstart="dragCatStart(event,'\${c.id}','__none__')">\${c.name}</span>\`).join('')}
+      </div>
+    </div>
+    <div class="space-y-3" id="grp-list">\${editGroups.map((g,idx)=>renderGroupCard(g,idx)).join('')}</div>
+    <button onclick="addGroup()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-purple-300 hover:text-purple-500 transition">
+      <i class="fas fa-plus mr-2"></i>상위 카테고리(그룹) 추가
+    </button>
+  </div>\`;
+}
+
+// ── 에이전트 카테고리 탭 HTML
+function _renderAgentCatsBody(allAgents) {
+  const assigned   = new Set(editAgentCategories.flatMap(c=>c.agents));
+  const unassigned = allAgents.filter(a=>!assigned.has(a));
+  const sortedCats = [...editAgentCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  return \`<div class="space-y-4">
+    <p class="text-xs text-gray-500">에이전트(광고매체)를 카테고리로 분류합니다. 드래그하거나 드롭다운으로 배정하세요.</p>
+    <div>
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미분류 에이전트</p>
+      <div id="unassigned-agent-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-1"
+        ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropToUnassignedAgent(event)">
+        \${unassigned.length===0?'<span class="text-xs text-gray-400">모든 에이전트가 카테고리에 배정됨</span>':
+          unassigned.map(a=>\`<span class="product-chip unassigned" draggable="true" ondragstart="dragAgentStart(event,'\${a}','__none__')">\${a}</span>\`).join('')}
+      </div>
+    </div>
+    <div class="space-y-3" id="agent-cat-list">\${sortedCats.map((cat,idx)=>renderAgentCatCard(cat,idx,allAgents,sortedCats.length)).join('')}</div>
+    <button onclick="addAgentCategory()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-green-300 hover:text-green-500 transition">
+      <i class="fas fa-plus mr-2"></i>에이전트 카테고리 추가
+    </button>
+  </div>\`;
+}
+
+// ── 에이전트 그룹 탭 HTML
+function _renderAgentGroupsBody() {
+  const assignedCatIds = new Set(editAgentGroups.flatMap(g=>g.categoryIds));
+  const unassignedCats = editAgentCategories.filter(c=>!assignedCatIds.has(c.id));
+  return \`<div class="space-y-4">
+    <p class="text-xs text-gray-500">에이전트 카테고리를 드래그하거나 선택하여 상위 그룹에 배정합니다.</p>
+    <div>
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">미배정 카테고리</p>
+      <div id="unassigned-agent-cat-pool" class="min-h-12 border-2 border-dashed border-gray-200 rounded-lg p-3 flex flex-wrap gap-2"
+        ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropAgentCatToUnassigned(event)">
+        \${unassignedCats.length===0?'<span class="text-xs text-gray-400">모든 카테고리가 그룹에 배정됨</span>':
+          unassignedCats.map(c=>\`<span class="product-chip assigned" style="background:\${c.color};border-color:\${c.color}" draggable="true" ondragstart="dragAgentCatStart(event,'\${c.id}','__none__')">\${c.name}</span>\`).join('')}
+      </div>
+    </div>
+    <div class="space-y-3" id="agent-grp-list">\${editAgentGroups.map((g,idx)=>renderAgentGroupCard(g,idx)).join('')}</div>
+    <button onclick="addAgentGroup()" class="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-teal-300 hover:text-teal-500 transition">
+      <i class="fas fa-plus mr-2"></i>에이전트 그룹 추가
+    </button>
+  </div>\`;
+}
+
+// ── 에이전트 카테고리 카드 렌더링
+function renderAgentCatCard(cat, idx, allAgents, totalCats) {
+  const ap    = allAgents || [];
+  const total = totalCats || editAgentCategories.length;
+  const allAssigned  = new Set(editAgentCategories.flatMap(c=>c.agents));
+  const available    = ap.filter(a=>!allAssigned.has(a)||cat.agents.includes(a));
+  const selectable   = available.filter(a=>!cat.agents.includes(a));
+  const curOrder = cat.order ?? idx+1;
+  return \`<div class="cat-card" id="agentcatcard_\${cat.id}">
+    <div class="cat-header bg-gray-50" onclick="toggleAgentCatCard('\${cat.id}')">
+      <div class="flex items-center gap-1 flex-shrink-0 mr-1" onclick="event.stopPropagation()">
+        <div class="flex flex-col gap-0.5">
+          <button onclick="moveAgentCatUp('\${cat.id}')" class="w-5 h-4 flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50 rounded transition \${idx===0?'opacity-25 pointer-events-none':''}" title="위로">
+            <i class="fas fa-caret-up text-xs"></i>
+          </button>
+          <button onclick="moveAgentCatDown('\${cat.id}')" class="w-5 h-4 flex items-center justify-center text-gray-400 hover:text-green-500 hover:bg-green-50 rounded transition \${idx===total-1?'opacity-25 pointer-events-none':''}" title="아래로">
+            <i class="fas fa-caret-down text-xs"></i>
+          </button>
+        </div>
+        <input type="number" min="1" max="\${total}" value="\${curOrder}"
+          class="w-9 h-7 text-center text-xs font-bold border border-gray-200 rounded-lg bg-white text-green-700 outline-none focus:border-green-400"
+          onclick="event.stopPropagation()"
+          onchange="setAgentCatOrder('\${cat.id}', parseInt(this.value))"
+          title="표시 순서 입력"/>
+      </div>
+      <div class="cat-color-dot" style="background:\${cat.color}" onclick="event.stopPropagation();showAgentCatColorPicker('\${cat.id}',event)"></div>
+      <input type="text" value="\${cat.name}" class="flex-1 bg-transparent font-semibold text-gray-700 outline-none text-sm" onchange="updateAgentCatName('\${cat.id}',this.value)" onclick="event.stopPropagation()"/>
+      <span class="text-xs text-gray-400">\${cat.agents.length}개 에이전트</span>
+      <button onclick="event.stopPropagation();removeAgentCategory('\${cat.id}')" class="text-gray-300 hover:text-red-400 ml-2"><i class="fas fa-trash text-xs"></i></button>
+      <i class="fas fa-chevron-down text-xs text-gray-400 ml-2" id="agentcatarrow_\${cat.id}"></i>
+    </div>
+    <div id="agentcatbody_\${cat.id}" class="p-3">
+      <div class="min-h-10 border border-dashed border-gray-200 rounded-lg p-2 flex flex-wrap gap-1"
+           ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropToAgentCategory(event,'\${cat.id}')">
+        \${cat.agents.length===0?'<span class="text-xs text-gray-400">에이전트를 드래그하여 배정하세요</span>':
+          cat.agents.map(a=>\`<span class="product-chip assigned" style="background:\${cat.color};border-color:\${cat.color}" draggable="true" ondragstart="dragAgentStart(event,'\${a}','\${cat.id}')" onclick="removeAgentFromCat('\${cat.id}','\${a}')" title="클릭하여 제거">\${a} <i class="fas fa-times text-xs opacity-70"></i></span>\`).join('')}
+      </div>
+      <div class="mt-2 flex gap-2">
+        <select id="agentaddsel_\${cat.id}" class="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none \${selectable.length===0?'opacity-50':''}">
+          <option value="">\${selectable.length===0?'배정 가능한 에이전트 없음':'+ 에이전트 추가...'}</option>
+          \${selectable.map(a=>\`<option value="\${a}">\${a}</option>\`).join('')}
+        </select>
+        <button onclick="addAgentToCatFromSelect('\${cat.id}')" class="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-40" \${selectable.length===0?'disabled':''}>추가</button>
+      </div>
+    </div>
+  </div>\`;
+}
+
+// ── 에이전트 그룹 카드 렌더링
+function renderAgentGroupCard(grp, idx) {
+  const cats = editAgentCategories.filter(c=>grp.categoryIds.includes(c.id));
+  return \`<div class="cat-card" id="agentgrpcard_\${grp.id}">
+    <div class="cat-header" style="background:\${grp.color}18" onclick="toggleAgentGrpCard('\${grp.id}')">
+      <div class="cat-color-dot" style="background:\${grp.color}" onclick="event.stopPropagation();showAgentGroupColorPicker('\${grp.id}',event)"></div>
+      <input type="text" value="\${grp.name}" class="flex-1 bg-transparent font-bold text-gray-800 outline-none text-sm" onchange="updateAgentGroupName('\${grp.id}',this.value)" onclick="event.stopPropagation()"/>
+      <span class="text-xs px-2 py-0.5 rounded-full text-white font-medium" style="background:\${grp.color}">\${cats.length}개 카테고리</span>
+      <button onclick="event.stopPropagation();removeAgentGroup('\${grp.id}')" class="text-gray-300 hover:text-red-400 ml-2"><i class="fas fa-trash text-xs"></i></button>
+      <i class="fas fa-chevron-down text-xs text-gray-400 ml-2" id="agentgrparrow_\${grp.id}"></i>
+    </div>
+    <div id="agentgrpbody_\${grp.id}" class="p-3">
+      <div class="min-h-10 border border-dashed border-gray-200 rounded-lg p-2 flex flex-wrap gap-2"
+           ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropAgentCatToGroup(event,'\${grp.id}')">
+        \${cats.length===0?'<span class="text-xs text-gray-400">카테고리를 드래그하여 배정하세요</span>':
+          cats.map(c=>\`<span class="product-chip assigned" style="background:\${c.color};border-color:\${c.color}" draggable="true" ondragstart="dragAgentCatStart(event,'\${c.id}','\${grp.id}')" onclick="removeAgentCatFromGroup('\${grp.id}','\${c.id}')" title="클릭하여 제거">\${c.name} <i class="fas fa-times text-xs opacity-70"></i></span>\`).join('')}
+      </div>
+      <div class="mt-2 flex gap-2">
+        <select id="agentgrpaddsel_\${grp.id}" class="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none">
+          <option value="">+ 카테고리 추가...</option>
+          \${editAgentCategories.filter(c=>!grp.categoryIds.includes(c.id)).map(c=>\`<option value="\${c.id}">\${c.name}</option>\`).join('')}
+        </select>
+        <button onclick="addAgentCatToGroupFromSelect('\${grp.id}')" class="px-3 py-1.5 bg-teal-600 text-white text-xs rounded-lg hover:bg-teal-700">추가</button>
+      </div>
+    </div>
+  </div>\`;
+}
+
+// ── 에이전트 카테고리/그룹 조작 함수들
+function refreshSettingsBody(){ const el=document.getElementById('main-content'); _renderSettingsPageBody(el); }
+function toggleAgentCatCard(id){const b=document.getElementById('agentcatbody_'+id);const a=document.getElementById('agentcatarrow_'+id);if(!b)return;const h=b.style.display==='none';b.style.display=h?'':'none';if(a)a.style.transform=h?'':'rotate(-90deg)';}
+function toggleAgentGrpCard(id){const b=document.getElementById('agentgrpbody_'+id);const a=document.getElementById('agentgrparrow_'+id);if(!b)return;const h=b.style.display==='none';b.style.display=h?'':'none';if(a)a.style.transform=h?'':'rotate(-90deg)';}
+function showAgentCatColorPicker(catId,event){
+  event.stopPropagation();const ex=document.getElementById('color-popup');if(ex)ex.remove();
+  const cat=editAgentCategories.find(c=>c.id===catId);
+  const popup=document.createElement('div');popup.id='color-popup';
+  popup.style.cssText='position:fixed;z-index:2000;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);';
+  popup.style.left=(event.clientX+10)+'px';popup.style.top=(event.clientY+10)+'px';
+  popup.innerHTML=\`<p class="text-xs font-bold text-gray-500 mb-2">색상 선택</p><div class="grid grid-cols-4 gap-2">\${PALETTE.map(c=>\`<div class="color-swatch \${cat&&cat.color===c?'selected':''}" style="background:\${c}" onclick="setAgentCatColor('\${catId}','\${c}')"></div>\`).join('')}</div>\`;
+  document.body.appendChild(popup);setTimeout(()=>document.addEventListener('click',()=>popup.remove(),{once:true}),50);
+}
+function showAgentGroupColorPicker(grpId,event){
+  event.stopPropagation();const ex=document.getElementById('color-popup');if(ex)ex.remove();
+  const grp=editAgentGroups.find(g=>g.id===grpId);
+  const popup=document.createElement('div');popup.id='color-popup';
+  popup.style.cssText='position:fixed;z-index:2000;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);';
+  popup.style.left=(event.clientX+10)+'px';popup.style.top=(event.clientY+10)+'px';
+  popup.innerHTML=\`<p class="text-xs font-bold text-gray-500 mb-2">색상 선택</p><div class="grid grid-cols-4 gap-2">\${GRP_PALETTE.map(c=>\`<div class="color-swatch \${grp&&grp.color===c?'selected':''}" style="background:\${c}" onclick="setAgentGroupColor('\${grpId}','\${c}')"></div>\`).join('')}</div>\`;
+  document.body.appendChild(popup);setTimeout(()=>document.addEventListener('click',()=>popup.remove(),{once:true}),50);
+}
+function setAgentCatColor(catId,color){const cat=editAgentCategories.find(c=>c.id===catId);if(cat){cat.color=color;refreshSettingsBody();}}
+function setAgentGroupColor(grpId,color){const g=editAgentGroups.find(g=>g.id===grpId);if(g){g.color=color;refreshSettingsBody();}}
+function updateAgentCatName(catId,name){const cat=editAgentCategories.find(c=>c.id===catId);if(cat)cat.name=name;}
+function updateAgentGroupName(grpId,name){const g=editAgentGroups.find(g=>g.id===grpId);if(g)g.name=name;}
+function removeAgentCategory(catId){if(!confirm('삭제 시 해당 에이전트들이 미분류로 이동합니다.'))return;editAgentCategories=editAgentCategories.filter(c=>c.id!==catId);reindexAgentCatOrders();refreshSettingsBody();}
+function removeAgentGroup(grpId){if(!confirm('그룹을 삭제하면 소속 카테고리들이 미배정으로 이동합니다.'))return;editAgentGroups=editAgentGroups.filter(g=>g.id!==grpId);refreshSettingsBody();}
+function addAgentCategory(){
+  const maxOrder=editAgentCategories.reduce((m,c)=>Math.max(m,c.order??0),0);
+  editAgentCategories.push({id:'ac'+Date.now(),name:'새 카테고리',color:PALETTE[editAgentCategories.length%PALETTE.length],order:maxOrder+1,agents:[]});
+  refreshSettingsBody();
+}
+function addAgentGroup(){editAgentGroups.push({id:'ag'+Date.now(),name:'새 그룹',color:GRP_PALETTE[editAgentGroups.length%GRP_PALETTE.length],categoryIds:[]});refreshSettingsBody();}
+
+function reindexAgentCatOrders(){
+  const sorted=[...editAgentCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  sorted.forEach((c,i)=>{c.order=i+1;});
+}
+function setAgentCatOrder(catId,newOrder){
+  const cat=editAgentCategories.find(c=>c.id===catId);if(!cat)return;
+  const total=editAgentCategories.length;newOrder=Math.max(1,Math.min(newOrder,total));
+  const oldOrder=cat.order??1;if(newOrder===oldOrder){refreshSettingsBody();return;}
+  editAgentCategories.forEach(c=>{if(c.id===catId)return;const o=c.order??1;if(newOrder<oldOrder){if(o>=newOrder&&o<oldOrder)c.order=o+1;}else{if(o>oldOrder&&o<=newOrder)c.order=o-1;}});
+  cat.order=newOrder;refreshSettingsBody();
+}
+function moveAgentCatUp(catId){
+  const sorted=[...editAgentCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  const idx=sorted.findIndex(c=>c.id===catId);if(idx<=0)return;
+  const cur=sorted[idx],prev=sorted[idx-1];const tmp=cur.order;cur.order=prev.order;prev.order=tmp;refreshSettingsBody();
+}
+function moveAgentCatDown(catId){
+  const sorted=[...editAgentCategories].sort((a,b)=>(a.order??99)-(b.order??99));
+  const idx=sorted.findIndex(c=>c.id===catId);if(idx<0||idx>=sorted.length-1)return;
+  const cur=sorted[idx],next=sorted[idx+1];const tmp=cur.order;cur.order=next.order;next.order=tmp;refreshSettingsBody();
+}
+function addAgentToCatFromSelect(catId){
+  const sel=document.getElementById('agentaddsel_'+catId);if(!sel||!sel.value)return;
+  const agent=sel.value;editAgentCategories.forEach(c=>{c.agents=c.agents.filter(a=>a!==agent);});
+  const cat=editAgentCategories.find(c=>c.id===catId);if(cat&&!cat.agents.includes(agent))cat.agents.push(agent);refreshSettingsBody();
+}
+function addAgentCatToGroupFromSelect(grpId){
+  const sel=document.getElementById('agentgrpaddsel_'+grpId);if(!sel||!sel.value)return;
+  const catId=sel.value;editAgentGroups.forEach(g=>{g.categoryIds=g.categoryIds.filter(id=>id!==catId);});
+  const g=editAgentGroups.find(g=>g.id===grpId);if(g&&!g.categoryIds.includes(catId))g.categoryIds.push(catId);refreshSettingsBody();
+}
+function removeAgentFromCat(catId,agent){const cat=editAgentCategories.find(c=>c.id===catId);if(cat){cat.agents=cat.agents.filter(a=>a!==agent);refreshSettingsBody();}}
+function removeAgentCatFromGroup(grpId,catId){const g=editAgentGroups.find(g=>g.id===grpId);if(g){g.categoryIds=g.categoryIds.filter(id=>id!==catId);refreshSettingsBody();}}
+
+// 에이전트 드래그 앤 드롭
+let dragAgentData=null;
+function dragAgentStart(event,agent,fromCatId){dragAgentData={agent,fromCatId};event.dataTransfer.effectAllowed='move';}
+function dropToAgentCategory(event,toCatId){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragAgentData)return;const{agent,fromCatId}=dragAgentData;editAgentCategories.forEach(c=>{c.agents=c.agents.filter(a=>a!==agent);});const t=editAgentCategories.find(c=>c.id===toCatId);if(t)t.agents.push(agent);dragAgentData=null;refreshSettingsBody();}
+function dropToUnassignedAgent(event){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragAgentData)return;const{agent,fromCatId}=dragAgentData;if(fromCatId!=='__none__'){const f=editAgentCategories.find(c=>c.id===fromCatId);if(f)f.agents=f.agents.filter(a=>a!==agent);}dragAgentData=null;refreshSettingsBody();}
+
+let dragAgentCatData=null;
+function dragAgentCatStart(event,catId,fromGrpId){dragAgentCatData={catId,fromGrpId};event.dataTransfer.effectAllowed='move';}
+function dropAgentCatToGroup(event,toGrpId){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragAgentCatData)return;const{catId,fromGrpId}=dragAgentCatData;if(fromGrpId!=='__none__'){const f=editAgentGroups.find(g=>g.id===fromGrpId);if(f)f.categoryIds=f.categoryIds.filter(id=>id!==catId);}const t=editAgentGroups.find(g=>g.id===toGrpId);if(t&&!t.categoryIds.includes(catId))t.categoryIds.push(catId);dragAgentCatData=null;refreshSettingsBody();}
+function dropAgentCatToUnassigned(event){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragAgentCatData)return;const{catId,fromGrpId}=dragAgentCatData;if(fromGrpId!=='__none__'){const f=editAgentGroups.find(g=>g.id===fromGrpId);if(f)f.categoryIds=f.categoryIds.filter(id=>id!==catId);}dragAgentCatData=null;refreshSettingsBody();}
+
+// ── 기존 상품 카테고리 모달 호환 함수 (잔고 구성비 페이지 버튼용)
+function openSettings(){ goPage('settings'); settingsMainTab='product_cats'; }
+function openSettingsOnGroupTab(){ goPage('settings'); settingsMainTab='product_groups'; }
+
 
 function renderCatCard(cat,idx,allProducts,totalCats){
   const ap=allProducts||[];
@@ -1752,7 +2048,7 @@ function renderGroupCard(grp,idx){
   </div>\`;
 }
 
-function refreshSettingsBody(){const ap=LOAN?[...new Set(LOAN.records.map(r=>r.p))].sort():[];renderSettingsBody(ap);}
+function _refreshProductSettingsOnly(){const el=document.getElementById('main-content');_renderSettingsPageBody(el);}
 function toggleCatCard(id){const b=document.getElementById('catbody_'+id);const a=document.getElementById('catarrow_'+id);if(!b)return;const h=b.style.display==='none';b.style.display=h?'':'none';if(a)a.style.transform=h?'':'rotate(-90deg)';}
 function toggleGrpCard(id){const b=document.getElementById('grpbody_'+id);const a=document.getElementById('grparrow_'+id);if(!b)return;const h=b.style.display==='none';b.style.display=h?'':'none';if(a)a.style.transform=h?'':'rotate(-90deg)';}
 
@@ -1853,12 +2149,12 @@ function dragCatStart(event,catId,fromGrpId){dragCatData={catId,fromGrpId};event
 function dropCatToGroup(event,toGrpId){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragCatData)return;const{catId,fromGrpId}=dragCatData;if(fromGrpId!=='__none__'){const f=editGroups.find(g=>g.id===fromGrpId);if(f)f.categoryIds=f.categoryIds.filter(id=>id!==catId);}const t=editGroups.find(g=>g.id===toGrpId);if(t&&!t.categoryIds.includes(catId))t.categoryIds.push(catId);dragCatData=null;refreshSettingsBody();}
 function dropCatToUnassigned(event){event.preventDefault();event.currentTarget.classList.remove('drag-over');if(!dragCatData)return;const{catId,fromGrpId}=dragCatData;if(fromGrpId!=='__none__'){const f=editGroups.find(g=>g.id===fromGrpId);if(f)f.categoryIds=f.categoryIds.filter(id=>id!==catId);}dragCatData=null;refreshSettingsBody();}
 
+// saveCategories: 잔고 구성비 페이지의 "카테고리 설정" 버튼 호환
 function saveCategories(){
-  // 저장 전 order 재정리 (1,2,3... 연속으로)
   reindexCatOrders();
   CATEGORIES=JSON.parse(JSON.stringify(editCategories));
   GROUPS=JSON.parse(JSON.stringify(editGroups));
-  saveCatsToStorage();closeSettings();renderPage();
+  saveCatsToStorage();renderPage();
 }
 function resetCategories(){if(!confirm('카테고리 및 그룹을 기본값으로 초기화하시겠습니까?'))return;editCategories=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));editGroups=JSON.parse(JSON.stringify(DEFAULT_GROUPS));refreshSettingsBody();}
 
