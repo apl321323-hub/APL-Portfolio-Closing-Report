@@ -169,6 +169,11 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
         <i class="sb-icon fas fa-users"></i>
         <span class="sb-label">에이전트 분석</span>
       </div>
+      <div class="sb-item" data-page="newloan" onclick="goPage('newloan')">
+        <i class="sb-icon fas fa-file-signature"></i>
+        <span class="sb-label">신규대출 현황</span>
+        <span class="sb-badge" id="sb-newloan-badge">-</span>
+      </div>
       <div class="sb-item" data-page="overdue" onclick="goPage('overdue')">
         <i class="sb-icon fas fa-exclamation-triangle"></i>
         <span class="sb-label">연체 현황</span>
@@ -524,7 +529,7 @@ function goPage(page) {
 function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
-  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings') {
+  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan') {
     el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
       <i class="fas fa-cloud-upload-alt text-5xl text-blue-200"></i>
       <p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>
@@ -544,6 +549,7 @@ function renderPage() {
     case 'trend':    renderTrend(el);    break;
     case 'upload':    renderUploadPage(el);    break;
     case 'contract':  renderContractPage(el);  break;
+    case 'newloan':   renderNewLoan(el);        break;
     case 'settings':  renderSettingsPage(el);  break;
   }
 }
@@ -1528,9 +1534,383 @@ function renderAgent(el) {
   },50);
 }
 
+// ==================== 페이지: 신규대출 현황 ====================
+let newLoanSelectedKey = null; // 현재 선택된 계약 기준월 key
+
+function renderNewLoan(el) {
+  const contractDB = getContractDB();
+  const keys = getContractKeys(); // 최신순
+
+  // 사이드바 배지 갱신
+  const badge = document.getElementById('sb-newloan-badge');
+  if (badge) badge.textContent = keys.length > 0 ? keys.length : '-';
+
+  // 데이터 없을 때
+  if (keys.length === 0) {
+    el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
+      <i class="fas fa-file-signature text-5xl text-green-200"></i>
+      <p class="text-lg font-medium text-gray-500">계약리스트 데이터가 없습니다</p>
+      <p class="text-sm">계약리스트를 업로드하면 신규대출 현황을 분석할 수 있습니다</p>
+      <button onclick="goPage('contract')" class="mt-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">
+        <i class="fas fa-upload mr-2"></i>계약리스트 업로드
+      </button>
+    </div>\`;
+    return;
+  }
+
+  // 선택된 키가 없거나 유효하지 않으면 최신 키로
+  if (!newLoanSelectedKey || !contractDB[newLoanSelectedKey]) {
+    newLoanSelectedKey = keys[0];
+  }
+  const d    = contractDB[newLoanSelectedKey];
+  const recs = d.records || [];
+
+  // ── 기본 집계
+  const totalAmt   = recs.reduce((s,r) => s + (r.amt||0), 0);
+  const totalCount = recs.length;
+  const rWSum      = recs.reduce((s,r) => r.r>0 ? s + r.amt*r.r : s, 0);
+  const rBSum      = recs.reduce((s,r) => r.r>0 ? s + r.amt     : s, 0);
+  const avgRate    = rBSum > 0 ? rWSum / rBSum : 0;
+  const colRecs    = recs.filter(r => r.appraised > 0 && r.loanAmt > 0);
+  const ltvW       = colRecs.reduce((s,r) => s + r.loanAmt,   0);
+  const ltvApp     = colRecs.reduce((s,r) => s + r.appraised, 0);
+  const avgLtv     = ltvApp > 0 ? ltvW / ltvApp * 100 : null;
+  const avgAmtPer  = totalCount > 0 ? totalAmt / totalCount : 0;
+
+  // ── 상품별 집계
+  const pMap = {};
+  recs.forEach(r => {
+    const p = r.p || '기타';
+    if (!pMap[p]) pMap[p] = { count:0, amt:0, rWSum:0, rBSum:0, ltvW:0, ltvApp:0 };
+    pMap[p].count++; pMap[p].amt += r.amt;
+    if (r.r > 0) { pMap[p].rWSum += r.amt * r.r; pMap[p].rBSum += r.amt; }
+    if (r.appraised > 0 && r.loanAmt > 0) { pMap[p].ltvW += r.loanAmt; pMap[p].ltvApp += r.appraised; }
+  });
+  const pArr = Object.entries(pMap).sort((a,b) => b[1].amt - a[1].amt);
+
+  // ── 에이전트별 집계
+  const aMap = {};
+  recs.forEach(r => {
+    const a = r.a || '기타';
+    if (!aMap[a]) aMap[a] = { count:0, amt:0, rWSum:0, rBSum:0 };
+    aMap[a].count++; aMap[a].amt += r.amt;
+    if (r.r > 0) { aMap[a].rWSum += r.amt * r.r; aMap[a].rBSum += r.amt; }
+  });
+  const aArr = Object.entries(aMap).sort((a,b) => b[1].amt - a[1].amt);
+
+  // ── 상품 카테고리별 집계
+  const catMap = {};
+  recs.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '기타');
+    if (!catMap[cat.id]) catMap[cat.id] = { ...cat, count:0, amt:0 };
+    catMap[cat.id].count++; catMap[cat.id].amt += r.amt;
+  });
+  const catArr = Object.values(catMap).sort((a,b) => b.amt - a.amt);
+
+  // ── 일별 집계
+  const dayMap = {};
+  recs.forEach(r => {
+    const dt = (r.dt || '').slice(0, 10) || '미상';
+    if (!dayMap[dt]) dayMap[dt] = { count:0, amt:0 };
+    dayMap[dt].count++; dayMap[dt].amt += r.amt;
+  });
+  const dayArr = Object.entries(dayMap).filter(([d]) => d !== '미상').sort((a,b) => a[0].localeCompare(b[0]));
+
+  // ── 금리 구간별 집계
+  const rateBands = [
+    { label:'9~11%',  min:9,  max:11,  color:'#059669' },
+    { label:'11~14%', min:11, max:14,  color:'#0891b2' },
+    { label:'14~17%', min:14, max:17,  color:'#d97706' },
+    { label:'17~19%', min:17, max:19,  color:'#ea580c' },
+    { label:'19%이상',min:19, max:100, color:'#dc2626' },
+  ];
+  rateBands.forEach(b => {
+    const rs = recs.filter(r => r.r > b.min && r.r <= b.max);
+    b.count = rs.length; b.amt = rs.reduce((s,r) => s + r.amt, 0);
+  });
+
+  // ── 월 선택 탭
+  const monthTabHtml = keys.length > 1 ? \`
+  <div class="flex gap-1.5 flex-wrap">
+    \${keys.map(k => {
+      const y = k.slice(0,4), mo = parseInt(k.slice(4));
+      const isActive = k === newLoanSelectedKey;
+      return \`<button onclick="selectNewLoanMonth('\${k}')"
+        class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition \${isActive
+          ? 'bg-green-600 text-white border-green-600'
+          : 'bg-white text-gray-500 border-gray-200 hover:border-green-400 hover:text-green-600'}">
+        \${y}년 \${mo}월
+      </button>\`;
+    }).join('')}
+  </div>\` : '';
+
+  const yk  = newLoanSelectedKey.slice(0,4);
+  const mok = parseInt(newLoanSelectedKey.slice(4));
+
+  el.innerHTML = \`
+<div class="space-y-5">
+
+  <!-- 헤더 -->
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h2 class="text-lg font-bold">신규대출 현황</h2>
+      <p class="text-sm text-gray-500">계약리스트 기준 신규 실행 현황 | \${yk}년 \${mok}월 | 기준일: \${d.base_date}</p>
+    </div>
+    \${monthTabHtml}
+  </div>
+
+  <!-- KPI 4종 -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#f0fdf4"><i class="fas fa-file-signature" style="color:#059669"></i></div>
+        <span class="badge badge-green">신규</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#059669">\${fmtAmt(totalAmt)}</p>
+      <p class="text-xs text-gray-500 mt-1">총 신규 실행액</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCount)}건</p>
+    </div>
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#fff7ed"><i class="fas fa-percentage" style="color:#d97706"></i></div>
+        <span class="badge badge-orange">금리</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#d97706">\${avgRate.toFixed(2)}%</p>
+      <p class="text-xs text-gray-500 mt-1">평균 정상이율</p>
+      <p class="text-xs text-gray-400 mt-0.5">대출액 가중평균</p>
+    </div>
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#eff6ff"><i class="fas fa-coins" style="color:#2563eb"></i></div>
+        <span class="badge badge-blue">평균</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#2563eb">\${(avgAmtPer/10000).toFixed(0)}만</p>
+      <p class="text-xs text-gray-500 mt-1">건당 평균 대출액</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCount)}건 평균</p>
+    </div>
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#fdf4ff"><i class="fas fa-home" style="color:#9333ea"></i></div>
+        <span class="badge badge-purple">LTV</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#9333ea">\${avgLtv !== null ? avgLtv.toFixed(1)+'%' : '-'}</p>
+      <p class="text-xs text-gray-500 mt-1">담보 평균 LTV</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(colRecs.length)}건 (담보상품)</p>
+    </div>
+  </div>
+
+  <!-- 일별 실행 차트 + 카테고리 구성비 -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="card p-5 lg:col-span-2">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-green-500"></i>일별 신규 실행</h3>
+      <div class="chart-wrap-lg"><canvas id="nl-day-bar"></canvas></div>
+    </div>
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>카테고리 구성비</h3>
+      <div style="height:200px"><canvas id="nl-cat-pie"></canvas></div>
+      <div class="mt-3 space-y-1">
+        \${catArr.map(c => {
+          const pct = (c.amt / totalAmt * 100).toFixed(1);
+          return \`<div class="flex items-center gap-2 text-xs">
+            <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
+            <span class="flex-1 truncate">\${c.name}</span>
+            <span class="font-bold">\${pct}%</span>
+            <span class="text-gray-400">\${fmtAmt(c.amt)}</span>
+          </div>\`;
+        }).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- 상품별 + 에이전트별 -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- 상품별 -->
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-tags mr-2 text-indigo-500"></i>상품별 신규 실행</h3>
+      <div class="chart-wrap mb-4"><canvas id="nl-prod-bar"></canvas></div>
+      <div class="overflow-auto" style="max-height:280px">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>대출액</th><th>구성비</th><th>평균금리</th><th>평균LTV</th></tr></thead>
+          <tbody>\${pArr.map(([p,v],i) => {
+            const cat = getCategoryOfProduct(p);
+            const pct = (v.amt / totalAmt * 100).toFixed(1);
+            const avgR2 = v.rBSum > 0 ? (v.rWSum / v.rBSum).toFixed(2) : '-';
+            const ltvStr = v.ltvApp > 0 ? (v.ltvW / v.ltvApp * 100).toFixed(1)+'%' : '-';
+            return \`<tr>
+              <td class="text-gray-400">\${i+1}</td>
+              <td class="font-medium">\${p}</td>
+              <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
+              <td>\${fmtN(v.count)}</td>
+              <td class="font-semibold">\${fmtAmt(v.amt)}</td>
+              <td><div class="flex items-center gap-1.5"><div class="progress-bar w-14 flex-shrink-0"><div class="progress-fill" style="width:\${pct}%;background:\${cat.color}"></div></div><span>\${pct}%</span></div></td>
+              <td>\${avgR2}%</td>
+              <td>\${ltvStr}</td>
+            </tr>\`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 에이전트별 -->
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-users mr-2 text-teal-500"></i>에이전트별 신규 실행</h3>
+      <div class="chart-wrap mb-4"><canvas id="nl-agent-bar"></canvas></div>
+      <div class="overflow-auto" style="max-height:280px">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>에이전트</th><th>카테고리</th><th>건수</th><th>대출액</th><th>구성비</th><th>평균금리</th><th>평균대출</th></tr></thead>
+          <tbody>\${aArr.map(([a,v],i) => {
+            const cat = getCategoryOfAgent(a);
+            const pct = (v.amt / totalAmt * 100).toFixed(1);
+            const avgR2 = v.rBSum > 0 ? (v.rWSum / v.rBSum).toFixed(2) : '-';
+            const avgA  = v.count > 0 ? (v.amt / v.count / 10000).toFixed(0)+'만' : '-';
+            return \`<tr>
+              <td class="text-gray-400">\${i+1}</td>
+              <td class="font-medium">\${a}</td>
+              <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
+              <td>\${fmtN(v.count)}</td>
+              <td class="font-semibold">\${fmtAmt(v.amt)}</td>
+              <td><div class="flex items-center gap-1.5"><div class="progress-bar w-14 flex-shrink-0"><div class="progress-fill bg-teal-400" style="width:\${pct}%"></div></div><span>\${pct}%</span></div></td>
+              <td>\${avgR2}%</td>
+              <td>\${avgA}</td>
+            </tr>\`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 금리 구간별 분포 -->
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-percentage mr-2 text-orange-500"></i>금리 구간별 실행 현황</h3>
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+      \${rateBands.map(b => {
+        const pct = totalCount > 0 ? (b.count / totalCount * 100).toFixed(1) : '0';
+        return \`<div class="rounded-xl p-3 border" style="background:\${b.color}0d;border-color:\${b.color}40">
+          <div class="flex items-center gap-1.5 mb-1">
+            <div class="w-2.5 h-2.5 rounded-full" style="background:\${b.color}"></div>
+            <span class="text-xs font-bold text-gray-600">\${b.label}</span>
+          </div>
+          <p class="text-xl font-black" style="color:\${b.color}">\${fmtN(b.count)}건</p>
+          <p class="text-xs text-gray-500 mt-0.5">\${fmtAmt(b.amt)}</p>
+          <div class="progress-bar mt-1.5"><div class="progress-fill" style="width:\${pct}%;background:\${b.color}"></div></div>
+          <p class="text-xs text-gray-400 mt-1">\${pct}%</p>
+        </div>\`;
+      }).join('')}
+    </div>
+    <div class="chart-wrap"><canvas id="nl-rate-bar"></canvas></div>
+  </div>
+
+  <!-- 전체 계약 목록 -->
+  <div class="card p-5">
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-list mr-2 text-gray-500"></i>전체 계약 목록 (\${fmtN(totalCount)}건)</h3>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input id="nl-search" type="text" placeholder="상품명·에이전트 검색..." onkeyup="filterNewLoanTable()"
+          class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-40 outline-none focus:border-green-400"/>
+        <select id="nl-filter-prod" onchange="filterNewLoanTable()"
+          class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-green-400">
+          <option value="">전체 상품</option>
+          \${pArr.map(([p]) => \`<option value="\${p}">\${p}</option>\`).join('')}
+        </select>
+        <select id="nl-filter-agent" onchange="filterNewLoanTable()"
+          class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-green-400">
+          <option value="">전체 에이전트</option>
+          \${aArr.map(([a]) => \`<option value="\${a}">\${a}</option>\`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="overflow-auto" style="max-height:420px">
+      <table class="data-table">
+        <thead><tr>
+          <th class="text-left">#</th>
+          <th class="text-left">상품명</th>
+          <th class="text-left">에이전트</th>
+          <th>대출액</th>
+          <th>금리</th>
+          <th>계약일</th>
+          <th>LTV</th>
+          <th>카테고리</th>
+        </tr></thead>
+        <tbody id="nl-tbody">
+          \${recs.map((r,i) => {
+            const cat = getCategoryOfProduct(r.p || '기타');
+            const ltvStr = (r.appraised > 0 && r.loanAmt > 0) ? (r.loanAmt / r.appraised * 100).toFixed(1)+'%' : '-';
+            return \`<tr data-prod="\${(r.p||'').replace(/"/g,'&quot;')}" data-agent="\${(r.a||'').replace(/"/g,'&quot;')}">
+              <td class="text-gray-400">\${i+1}</td>
+              <td class="font-medium">\${r.p||'-'}</td>
+              <td>\${r.a||'-'}</td>
+              <td class="font-semibold">\${(r.amt/10000).toFixed(0)}만</td>
+              <td>\${r.r > 0 ? r.r.toFixed(1)+'%' : '-'}</td>
+              <td class="text-gray-500">\${r.dt||'-'}</td>
+              <td>\${ltvStr}</td>
+              <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
+            </tr>\`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>\`;
+
+  // ── 차트 렌더링
+  const NL_COLORS = ['#2563eb','#059669','#7c3aed','#d97706','#0891b2','#dc2626','#6366f1','#0d9488','#c026d3','#ea580c','#84cc16','#64748b','#be185d','#92400e','#1d4ed8','#15803d'];
+  setTimeout(() => {
+    // 일별 실행 (막대 + 건수 라인)
+    mkBar('nl-day-bar', dayArr.map(([dt]) => dt.slice(5)), [
+      { label:'대출액(억)', data: dayArr.map(([,v]) => v.amt/100000000), backgroundColor:'#059669aa', yAxisID:'y' },
+      { label:'건수', data: dayArr.map(([,v]) => v.count), type:'line', borderColor:'#d97706', backgroundColor:'transparent', yAxisID:'y1', borderWidth:2, pointRadius:3 }
+    ], { extra:{ scales:{
+      y:  { ticks:{ callback: v => v.toFixed(1)+'억', font:{size:10} } },
+      y1: { type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'건', font:{size:10}} }
+    }}});
+    // 카테고리 파이
+    mkPie('nl-cat-pie', catArr.map(c=>c.name), catArr.map(c=>c.amt), catArr.map(c=>c.color));
+    // 상품별 가로 막대
+    mkBar('nl-prod-bar', pArr.map(([p])=>p), [{
+      label:'대출액(억)', data: pArr.map(([,v])=>v.amt/100000000),
+      backgroundColor: pArr.map(([p]) => getCategoryOfProduct(p).color+'cc')
+    }], { extra:{ indexAxis:'y', scales:{x:{ticks:{callback:v=>v.toFixed(1)+'억'}}, y:{ticks:{font:{size:10}}}}}});
+    // 에이전트별 가로 막대
+    mkBar('nl-agent-bar', aArr.map(([a])=>a), [{
+      label:'대출액(억)', data: aArr.map(([,v])=>v.amt/100000000),
+      backgroundColor: NL_COLORS.slice(0, aArr.length)
+    }], { extra:{ indexAxis:'y', scales:{x:{ticks:{callback:v=>v.toFixed(1)+'억'}}, y:{ticks:{font:{size:10}}}}}});
+    // 금리 구간 막대+라인
+    mkBar('nl-rate-bar', rateBands.map(b=>b.label), [
+      { label:'건수', data:rateBands.map(b=>b.count), backgroundColor:rateBands.map(b=>b.color+'cc'), yAxisID:'y' },
+      { label:'대출액(억)', data:rateBands.map(b=>b.amt/100000000), type:'line', borderColor:'#64748b', backgroundColor:'transparent', yAxisID:'y1', borderWidth:2, pointRadius:4 }
+    ], { extra:{ scales:{
+      y:  { ticks:{ callback:v=>v+'건', font:{size:10} } },
+      y1: { type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'억', font:{size:10}} }
+    }}});
+  }, 50);
+}
+
+function selectNewLoanMonth(key) {
+  newLoanSelectedKey = key;
+  renderNewLoan(document.getElementById('main-content'));
+}
+
+function filterNewLoanTable() {
+  const q      = (document.getElementById('nl-search')?.value || '').trim().toLowerCase();
+  const fProd  = document.getElementById('nl-filter-prod')?.value  || '';
+  const fAgent = document.getElementById('nl-filter-agent')?.value || '';
+  const rows   = document.querySelectorAll('#nl-tbody tr');
+  rows.forEach(tr => {
+    const prod  = tr.dataset.prod  || '';
+    const agent = tr.dataset.agent || '';
+    const text  = (prod + ' ' + agent).toLowerCase();
+    const show  =
+      (!q      || text.includes(q)) &&
+      (!fProd  || prod  === fProd)  &&
+      (!fAgent || agent === fAgent);
+    tr.style.display = show ? '' : 'none';
+  });
+}
+
 // ==================== 페이지: 연체 현황 ====================
 function renderOverdue(el) {
-  const total=LOAN.records.reduce((s,r)=>s+r.b,0);
   const r0=LOAN.records.filter(r=>r.d===0);
   const r10=LOAN.records.filter(r=>r.d>0&&r.d<=10);
   const r30=LOAN.records.filter(r=>r.d>10&&r.d<=30);
