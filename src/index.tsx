@@ -495,9 +495,9 @@ function aggregateByProduct() {
   const map = {};
   for(const r of LOAN.records){
     const p=r.p||'기타';
-    if(!map[p])map[p]={count:0,balance:0,rateSum:0,rateCount:0,ltvSum:0,ltvCount:0,overdue0:0,overdue10:0,overdue30:0,overdue60:0,overdue90:0,overdueMore:0,bal0:0,bal30:0};
+    if(!map[p])map[p]={count:0,balance:0,rateWSum:0,rateBalSum:0,ltvSum:0,ltvCount:0,overdue0:0,overdue10:0,overdue30:0,overdue60:0,overdue90:0,overdueMore:0,bal0:0,bal30:0};
     map[p].count++;map[p].balance+=r.b;
-    if(r.r>0){map[p].rateSum+=r.r;map[p].rateCount++;}
+    if(r.r>0&&r.b>0){map[p].rateWSum+=r.b*r.r;map[p].rateBalSum+=r.b;}  // 잔액가중합
     if(r.ltv>0){map[p].ltvSum+=r.ltv;map[p].ltvCount++;}
     if(r.d===0){map[p].overdue0++;map[p].bal0+=r.b;}
     else if(r.d<=10)map[p].overdue10++;
@@ -512,9 +512,9 @@ function aggregateByAgent() {
   const map = {};
   for(const r of LOAN.records){
     const a=r.a||'기타';
-    if(!map[a])map[a]={count:0,balance:0,rateSum:0,rateCount:0,overdue30:0,bal30:0};
+    if(!map[a])map[a]={count:0,balance:0,rateWSum:0,rateBalSum:0,overdue30:0,bal30:0};
     map[a].count++;map[a].balance+=r.b;
-    if(r.r>0){map[a].rateSum+=r.r;map[a].rateCount++;}
+    if(r.r>0&&r.b>0){map[a].rateWSum+=r.b*r.r;map[a].rateBalSum+=r.b;}  // 잔액가중합
     if(r.d>30){map[a].overdue30++;map[a].bal30+=r.b;}
   }
   return map;
@@ -522,12 +522,12 @@ function aggregateByAgent() {
 function aggregateByCategory() {
   const catMap={};
   const allCats=[...CATEGORIES,{id:'__none__',name:'미분류',color:'#9ca3af',products:[]}];
-  for(const cat of allCats)catMap[cat.id]={...cat,count:0,balance:0,rateSum:0,rateCount:0,ltvSum:0,ltvCount:0,overdue0:0,overdueAny:0,bal0:0,balAny:0};
+  for(const cat of allCats)catMap[cat.id]={...cat,count:0,balance:0,rateWSum:0,rateBalSum:0,ltvSum:0,ltvCount:0,overdue0:0,overdueAny:0,bal0:0,balAny:0};
   for(const r of LOAN.records){
     const cat=getCategoryOfProduct(r.p);
     const cm=catMap[cat.id];if(!cm)continue;
     cm.count++;cm.balance+=r.b;
-    if(r.r>0){cm.rateSum+=r.r;cm.rateCount++;}
+    if(r.r>0&&r.b>0){cm.rateWSum+=r.b*r.r;cm.rateBalSum+=r.b;}  // 잔액가중합
     if(r.ltv>0){cm.ltvSum+=r.ltv;cm.ltvCount++;}
     if(r.d===0){cm.overdue0++;cm.bal0+=r.b;}else{cm.overdueAny++;cm.balAny+=r.b;}
   }
@@ -535,21 +535,21 @@ function aggregateByCategory() {
 }
 function aggregateByGroup() {
   const catMap={};
-  for(const c of CATEGORIES)catMap[c.id]={...c,count:0,balance:0,rateSum:0,rateCount:0,overdueAny:0,balAny:0};
-  catMap['__none__']={id:'__none__',name:'미분류',color:'#9ca3af',count:0,balance:0,rateSum:0,rateCount:0,overdueAny:0,balAny:0};
+  for(const c of CATEGORIES)catMap[c.id]={...c,count:0,balance:0,rateWSum:0,rateBalSum:0,overdueAny:0,balAny:0};
+  catMap['__none__']={id:'__none__',name:'미분류',color:'#9ca3af',count:0,balance:0,rateWSum:0,rateBalSum:0,overdueAny:0,balAny:0};
   for(const r of LOAN.records){
     const cat=getCategoryOfProduct(r.p);const cm=catMap[cat.id]||catMap['__none__'];
     cm.count++;cm.balance+=r.b;
-    if(r.r>0){cm.rateSum+=r.r;cm.rateCount++;}
+    if(r.r>0&&r.b>0){cm.rateWSum+=r.b*r.r;cm.rateBalSum+=r.b;}  // 잔액가중합
     if(r.d>0){cm.overdueAny++;cm.balAny+=r.b;}
   }
   const grpMap={};
   const allGrps=[...GROUPS,{id:'__none__',name:'미배정',color:'#9ca3af',categoryIds:[]}];
-  for(const g of allGrps)grpMap[g.id]={...g,count:0,balance:0,rateSum:0,rateCount:0,overdueAny:0,balAny:0,cats:[]};
+  for(const g of allGrps)grpMap[g.id]={...g,count:0,balance:0,rateWSum:0,rateBalSum:0,overdueAny:0,balAny:0,cats:[]};
   for(const[cid,cv] of Object.entries(catMap)){
     if(cv.count===0)continue;
     const grp=getGroupOfCategory(cid);const gm=grpMap[grp.id];if(!gm)continue;
-    gm.count+=cv.count;gm.balance+=cv.balance;gm.rateSum+=cv.rateSum;gm.rateCount+=cv.rateCount;gm.overdueAny+=cv.overdueAny;gm.balAny+=cv.balAny;gm.cats.push(cv);
+    gm.count+=cv.count;gm.balance+=cv.balance;gm.rateWSum+=cv.rateWSum;gm.rateBalSum+=cv.rateBalSum;gm.overdueAny+=cv.overdueAny;gm.balAny+=cv.balAny;gm.cats.push(cv);
   }
   return Object.values(grpMap).filter(g=>g.count>0);
 }
@@ -813,7 +813,9 @@ function renderOverview(el) {
   const overdue30 = LOAN.records.filter(r=>r.d>30);
   const od30Amt = overdue30.reduce((s,r)=>s+r.b,0);
   const od30Rate = od30Amt/total*100;
-  const avgRate = LOAN.records.reduce((s,r)=>s+(r.r||0),0)/LOAN.records.filter(r=>r.r>0).length;
+  const rWSum=LOAN.records.reduce((s,r)=>r.r>0&&r.b>0?s+r.b*r.r:s,0);
+  const rBSum=LOAN.records.reduce((s,r)=>r.r>0&&r.b>0?s+r.b:s,0);
+  const avgRate = rBSum>0 ? rWSum/rBSum : 0;
   const trendLast = TREND?.total;
   const tBal = trendLast?.balance[trendLast.balance.length-1];
   const tNew = trendLast?.new_loans[trendLast.new_loans.length-1];
@@ -917,7 +919,7 @@ function renderBalance(el) {
       \${grpData.map(g=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(g.balance/total*100).toFixed(1)}%;background:\${g.color}" title="\${g.name}: \${fmtAmt(g.balance)}">\${(g.balance/total*100)>=6?g.name:''}</div>\`).join('')}
     </div>
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      \${grpData.map(g=>{const pct=(g.balance/total*100);const avgR=g.rateCount>0?(g.rateSum/g.rateCount).toFixed(2):'-';const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
+      \${grpData.map(g=>{const pct=(g.balance/total*100);const avgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
       return \`<div class="rounded-xl p-3" style="background:\${g.color}12;border:1.5px solid \${g.color}40">
         <div class="flex items-center gap-1.5 mb-1"><div class="w-2.5 h-2.5 rounded-full" style="background:\${g.color}"></div><span class="text-xs font-bold text-gray-700">\${g.name}</span></div>
         <p class="text-2xl font-black" style="color:\${g.color}">\${pct.toFixed(1)}%</p>
@@ -931,7 +933,7 @@ function renderBalance(el) {
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-    \${catData.map(c=>{const pct=(c.balance/total*100);const avgR=c.rateCount>0?(c.rateSum/c.rateCount).toFixed(2):'-';const avgLtv=c.ltvCount>0?(c.ltvSum/c.ltvCount).toFixed(1):'-';const odRate=c.count>0?((c.overdueAny/c.count)*100).toFixed(1):'0';
+    \${catData.map(c=>{const pct=(c.balance/total*100);const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';const avgLtv=c.ltvCount>0?(c.ltvSum/c.ltvCount).toFixed(1):'-';const odRate=c.count>0?((c.overdueAny/c.count)*100).toFixed(1):'0';
     return \`<div class="card p-5">
       <div class="flex items-start justify-between mb-3">
         <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm" style="background:\${c.color}"></div><span class="font-bold text-gray-800">\${c.name}</span></div>
@@ -966,7 +968,7 @@ function renderBalance(el) {
       <div class="overflow-auto" style="max-height:380px">
         <table class="data-table"><thead><tr><th>카테고리</th><th>상품명</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>연체율</th></tr></thead>
         <tbody>\${Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).map(([p,v])=>{
-          const cat=getCategoryOfProduct(p);const pct2=(v.balance/total*100).toFixed(1);const avgR2=v.rateCount>0?(v.rateSum/v.rateCount).toFixed(2):'-';
+          const cat=getCategoryOfProduct(p);const pct2=(v.balance/total*100).toFixed(1);const avgR2=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
           const odR=v.count>0?((v.overdue30+v.overdue60+v.overdue90+v.overdueMore)/v.count*100).toFixed(1):'0';
           return \`<tr><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td><td class="font-medium">\${p}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
           <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
@@ -1002,7 +1004,7 @@ function renderProduct(el) {
     <div class="overflow-auto">
       <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>정상</th><th>10일↓</th><th>30일↓</th><th>90일↑</th></tr></thead>
       <tbody>\${pArr.map(([p,v],i)=>{
-        const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateCount>0?(v.rateSum/v.rateCount).toFixed(2):'-';const avgLtv=v.ltvCount>0?(v.ltvSum/v.ltvCount).toFixed(1):'-';
+        const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';const avgLtv=v.ltvCount>0?(v.ltvSum/v.ltvCount).toFixed(1):'-';
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${p}</td><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
         <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td><td>\${pct}%</td><td>\${avgR}%</td><td>\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
         <td class="text-green-600">\${fmtN(v.overdue0)}</td><td>\${fmtN(v.overdue10)}</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="text-red-600 font-bold">\${fmtN(v.overdueMore)}</td></tr>\`;}).join('')}
@@ -1013,7 +1015,7 @@ function renderProduct(el) {
   setTimeout(()=>{
     const top=pArr.slice(0,15);
     mkBar('prod-bar',top.map(([p])=>p),[{label:'잔고',data:top.map(([,v])=>v.balance/100000000),backgroundColor:top.map(([p])=>getCategoryOfProduct(p).color+'cc')}],{extra:{indexAxis:'y',scales:{x:{ticks:{callback:v=>v+'억'}},y:{ticks:{font:{size:10}}}}}});
-    mkBar('prod-rate',pArr.map(([p])=>p),[{label:'평균금리(%)',data:pArr.map(([,v])=>v.rateCount>0?(v.rateSum/v.rateCount):0),backgroundColor:pArr.map(([p])=>getCategoryOfProduct(p).color+'bb')}],{pct:true,extra:{scales:{y:{ticks:{callback:v=>v+'%'}}}}});
+    mkBar('prod-rate',pArr.map(([p])=>p),[{label:'평균금리(%)',data:pArr.map(([,v])=>v.rateBalSum>0?(v.rateWSum/v.rateBalSum):0),backgroundColor:pArr.map(([p])=>getCategoryOfProduct(p).color+'bb')}],{pct:true,extra:{scales:{y:{ticks:{callback:v=>v+'%'}}}}});
   },50);
 }
 
@@ -1040,7 +1042,7 @@ function renderAgent(el) {
     <div class="overflow-auto">
       <table class="data-table"><thead><tr><th>#</th><th>에이전트</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>30일연체건수</th><th>30일연체율</th></tr></thead>
       <tbody>\${aArr.map(([a,v],i)=>{
-        const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateCount>0?(v.rateSum/v.rateCount).toFixed(2):'-';const odR=v.count>0?(v.overdue30/v.count*100).toFixed(1):'0';
+        const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';const odR=v.count>0?(v.overdue30/v.count*100).toFixed(1):'0';
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${a}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
         <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill bg-blue-400" style="width:\${pct}%"></div></div><span>\${pct}%</span></div></td>
         <td>\${avgR}%</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="\${parseFloat(odR)>=5?'text-red-600 font-bold':parseFloat(odR)>=3?'text-orange-500':''}">\${odR}%</td></tr>\`;}).join('')}
