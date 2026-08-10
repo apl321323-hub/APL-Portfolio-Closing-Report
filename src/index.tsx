@@ -736,8 +736,8 @@ function processFile(file) {
         const b = parseFloat(row[colB]) || 0;
         if (b <= 0) continue;
         const pName = String(row[colP] || '기타').trim();
-        // 담보 LTV 관련 필드 (담보론, 담보론(지분대출)만 사용)
-        const isCollateral = (pName === '담보론' || pName === '담보론(지분대출)');
+        // 담보 LTV 관련 필드 (담보론, 담보론(지분대출), 토마토토탈론, 토마토토탈론플러스)
+        const isCollateral = (pName === '담보론' || pName === '담보론(지분대출)' || pName === '토마토토탈론' || pName === '토마토토탈론플러스');
         const loanK   = parseFloat(row[colK])  || 0;  // 최초대출액
         const cfVal   = parseFloat(row[colCF]) || 0;  // 최종감정가
         const cgVal   = parseFloat(row[colCG]) || 0;  // 소유비율합계(%)
@@ -1024,8 +1024,8 @@ function renderProduct(el) {
       <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>정상</th><th>10일↓</th><th>30일↓</th><th>90일↑</th></tr></thead>
       <tbody>\${pArr.map(([p,v],i)=>{
         const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
-        // 평균LTV: 담보론, 담보론(지분대출)만 표시 — Σ담보대출 / Σ감정가 × 100
-        const isColPrd=(p==='담보론'||p==='담보론(지분대출)');
+        // 평균LTV: 담보론, 담보론(지분대출), 토마토토탈론, 토마토토탈론플러스만 표시 — Σ담보대출 / Σ감정가 × 100
+        const isColPrd=(p==='담보론'||p==='담보론(지분대출)'||p==='토마토토탈론'||p==='토마토토탈론플러스');
         const avgLtv=isColPrd&&v.ltvAppSum>0?(v.ltvWSum/v.ltvAppSum*100).toFixed(1):'-';
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${p}</td><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
         <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td><td>\${pct}%</td><td>\${avgR}%</td><td>\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
