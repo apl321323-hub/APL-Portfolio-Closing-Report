@@ -455,8 +455,24 @@ async function init() {
     const months = getMonthKeys();
     if (months.length > 0) {
       await loadMonthData(months[0]);
+    } else {
+      // localStorage 비어있으면 /loan_data.json 자동 로드 (fallback)
+      try {
+        const loanRes = await fetch('/loan_data.json');
+        if (loanRes.ok) {
+          const loanData = await loanRes.json();
+          if (loanData && loanData.base_date) {
+            // yyyymm 키 추출 (base_date: "2026-06-30" → "202606")
+            const key = loanData.base_date.replace(/-/g,'').slice(0,6);
+            const db = getMonthsDB();
+            db[key] = loanData;
+            saveMonthsDB(db);
+            await loadMonthData(key);
+            console.log('[결산자료] loan_data.json 자동 로드 완료 (' + key + ', ' + (loanData.records?.length||0) + '건)');
+          }
+        }
+      } catch(e2) { /* fallback 실패 시 무시 */ }
     }
-    // loan_data.json fallback 제거 - 데이터 없으면 업로드 유도 화면 표시
 
     if (LOAN) {
       document.getElementById('hdr-date').textContent = '마감: ' + LOAN.base_date + ' | 추이: ' + (TREND?.generated_at || '-');
