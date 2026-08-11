@@ -392,15 +392,18 @@ let settingsTab = 'categories';
 
 // ==================== 에이전트 카테고리 설정 ====================
 const DEFAULT_AGENT_CATEGORIES = [
-  { id:'ac1', name:'본사영업',    color:'#2563eb', order:1, agents:['본사영업','CALL인입','본사직영'] },
-  { id:'ac2', name:'온라인플랫폼',color:'#059669', order:2, agents:['원클플랫폼','알다플랫폼','팀다플랫폼','핀다플랫폼','웰컴플랫폼','오케이다이렉트대부'] },
-  { id:'ac3', name:'오프라인제휴',color:'#7c3aed', order:3, agents:['대리점','지점제휴','법인제휴'] },
-  { id:'ac4', name:'기타',        color:'#6b7280', order:4, agents:['기타'] },
+  { id:'ac1', name:'본사영업',    color:'#2563eb', order:1, agents:['본사영업','CALL인입','홈페이지','홈페이지-자체','고객추천'] },
+  { id:'ac2', name:'온라인플랫폼',color:'#059669', order:2, agents:['알다플랫폼','핀다플랫폼','웰컴플랫폼','웰컴배너','오케이다이렉트대부','오케이다이렉트2','오케이엔캐시'] },
+  { id:'ac3', name:'오프라인제휴',color:'#7c3aed', order:3, agents:['라이프대부중개','상상대부중개','에스엠씨대부중개','경인센터대부중개(주)','대관사대부중개','토마토자산관리대부','한상대부중개','한국모기지','온누리','엠에스캐피탈','핀밸런스'] },
+  { id:'ac4', name:'구오케이',    color:'#d97706', order:4, agents:['오케이(현)','오케이(상)','오케이(공)'] },
+  { id:'ac5', name:'기타',        color:'#6b7280', order:5, agents:['기타'] },
 ];
 const DEFAULT_AGENT_GROUPS = [
   { id:'ag1', name:'직접채널',   color:'#1e40af', categoryIds:['ac1'] },
-  { id:'ag2', name:'간접채널',   color:'#065f46', categoryIds:['ac2','ac3'] },
-  { id:'ag3', name:'기타',       color:'#374151', categoryIds:['ac4'] },
+  { id:'ag2', name:'온라인채널', color:'#065f46', categoryIds:['ac2'] },
+  { id:'ag3', name:'오프라인채널', color:'#5b21b6', categoryIds:['ac3'] },
+  { id:'ag4', name:'구오케이',   color:'#92400e', categoryIds:['ac4'] },
+  { id:'ag5', name:'기타',       color:'#374151', categoryIds:['ac5'] },
 ];
 let AGENT_CATEGORIES = [];
 let AGENT_GROUPS = [];
@@ -624,19 +627,19 @@ function loadCategoriesFromStorage() {
   try{const s=localStorage.getItem('apl_groups_v1');GROUPS=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_GROUPS));}catch(e){GROUPS=JSON.parse(JSON.stringify(DEFAULT_GROUPS));}
   // 에이전트 카테고리
   try{
-    const s=localStorage.getItem('apl_agent_cats_v1');
+    const s=localStorage.getItem('apl_agent_cats_v2');
     AGENT_CATEGORIES=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_AGENT_CATEGORIES));
     AGENT_CATEGORIES.forEach((c,i)=>{ if(c.order==null) c.order=i+1; });
   }catch(e){AGENT_CATEGORIES=JSON.parse(JSON.stringify(DEFAULT_AGENT_CATEGORIES));}
-  try{const s=localStorage.getItem('apl_agent_groups_v1');AGENT_GROUPS=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));}catch(e){AGENT_GROUPS=JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));}
+  try{const s=localStorage.getItem('apl_agent_groups_v2');AGENT_GROUPS=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));}catch(e){AGENT_GROUPS=JSON.parse(JSON.stringify(DEFAULT_AGENT_GROUPS));}
 }
 function saveCatsToStorage(){
   localStorage.setItem('apl_categories_v2',JSON.stringify(CATEGORIES));
   localStorage.setItem('apl_groups_v1',JSON.stringify(GROUPS));
 }
 function saveAgentCatsToStorage(){
-  localStorage.setItem('apl_agent_cats_v1',JSON.stringify(AGENT_CATEGORIES));
-  localStorage.setItem('apl_agent_groups_v1',JSON.stringify(AGENT_GROUPS));
+  localStorage.setItem('apl_agent_cats_v2',JSON.stringify(AGENT_CATEGORIES));
+  localStorage.setItem('apl_agent_groups_v2',JSON.stringify(AGENT_GROUPS));
 }
 function getGroupOfCategory(catId){for(const g of GROUPS)if(g.categoryIds.includes(catId))return g;return{id:'__none__',name:'미배정',color:'#9ca3af'};}
 function getCategoryOfProduct(pname){for(const cat of CATEGORIES)if(cat.products.includes(pname))return cat;return{id:'__none__',name:'미분류',color:'#9ca3af'};}
