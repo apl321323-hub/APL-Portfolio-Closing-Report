@@ -144,10 +144,17 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       </div>
     </div>
 
-    <!-- 분석 현황 월 표시 -->
-    <div class="px-4 py-3 border-b border-white border-opacity-10">
+    <!-- 분석 기준월 셀렉터 -->
+    <div class="px-3 py-2.5 border-b border-white border-opacity-10">
       <p class="text-xs text-blue-300 mb-1.5">분석 기준월</p>
-      <div id="sb-active-month" class="text-white font-bold text-sm">-</div>
+      <div id="sb-month-selector" onclick="toggleMonthDropdown()" class="flex items-center justify-between cursor-pointer rounded-lg px-3 py-2 bg-white bg-opacity-10 hover:bg-opacity-20 transition-all">
+        <span id="sb-active-month" class="text-white font-bold text-sm">-</span>
+        <i id="sb-month-chevron" class="fas fa-chevron-down text-blue-300 text-xs transition-transform duration-200"></i>
+      </div>
+      <!-- 드롭다운 월 목록 -->
+      <div id="sb-month-dropdown" class="hidden mt-1.5 rounded-lg overflow-hidden border border-white border-opacity-10">
+        <div id="sb-month-list" class="max-h-48 overflow-y-auto"></div>
+      </div>
     </div>
 
     <!-- 메뉴 -->
@@ -204,13 +211,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       </div>
     </div>
 
-    <!-- 하단: 업로드된 월 빠른 선택 -->
-    <div class="px-3 pb-2 border-t border-white border-opacity-10 pt-3">
-      <p class="text-xs text-blue-300 mb-2">업로드된 월</p>
-      <div id="sb-month-list" class="space-y-1">
-        <p class="text-xs text-blue-400 opacity-50">없음</p>
-      </div>
-    </div>
+
   </aside>
 
   <!-- ===== 메인 영역 ===== -->
@@ -514,17 +515,48 @@ function refreshSidebarMonths(activeKey) {
 
   const list = document.getElementById('sb-month-list');
   if (!list) return;
+
   if (months.length === 0) {
-    list.innerHTML = '<p class="text-xs text-blue-400 opacity-50">없음</p>';
+    list.innerHTML = '<div class="px-3 py-2 text-xs text-blue-400 opacity-50">업로드된 데이터 없음</div>';
     return;
   }
+
+  // activeKey가 없으면 현재 LOAN의 base_date로 추정
+  const curKey = activeKey || (LOAN ? (LOAN.base_date||'').replace(/-/g,'').slice(0,6) : null);
+
   list.innerHTML = months.map(m => {
     const y = m.slice(0,4), mo = parseInt(m.slice(4));
-    const isActive = m === activeKey;
-    return \`<button onclick="selectMonth('\${m}')" class="month-tag \${isActive?'active':'has-data'} w-full text-left">
-      <i class="fas fa-circle text-xs"></i> \${y}년 \${mo}월
+    const isActive = m === curKey;
+    return \`<button onclick="selectMonth('\${m}');closeMonthDropdown();"
+      class="w-full text-left flex items-center gap-2 px-3 py-2 text-sm transition-all \${isActive
+        ? 'bg-blue-600 text-white font-bold'
+        : 'text-blue-100 hover:bg-white hover:bg-opacity-10'}">
+      <i class="fas fa-\${isActive?'check-circle':'circle'} text-xs flex-shrink-0 opacity-60"></i>
+      <span>\${y}년 \${mo}월</span>
+      \${isActive ? '<span class="ml-auto text-xs opacity-70">현재</span>' : ''}
     </button>\`;
   }).join('');
+}
+
+function toggleMonthDropdown() {
+  const dd = document.getElementById('sb-month-dropdown');
+  const chevron = document.getElementById('sb-month-chevron');
+  if (!dd) return;
+  const isOpen = !dd.classList.contains('hidden');
+  if (isOpen) {
+    dd.classList.add('hidden');
+    if (chevron) chevron.style.transform = '';
+  } else {
+    dd.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  }
+}
+
+function closeMonthDropdown() {
+  const dd = document.getElementById('sb-month-dropdown');
+  const chevron = document.getElementById('sb-month-chevron');
+  if (dd) dd.classList.add('hidden');
+  if (chevron) chevron.style.transform = '';
 }
 
 async function selectMonth(yyyymm) {
