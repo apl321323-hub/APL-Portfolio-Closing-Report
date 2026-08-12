@@ -1436,7 +1436,33 @@ function renderOverview(el) {
       <div class="chart-wrap-lg"><canvas id="ov-bar"></canvas></div>
     </div>
   </div>
-  \${TREND?'\`<div class="card p-5"><h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-chart-area mr-2 text-green-500"></i>월별 추이 (최근 13개월)</h3><div class="chart-wrap-lg"><canvas id="ov-trend"></canvas></div></div>\`':''}
+  \${TREND ? \`
+  <!-- 연체율 추이 (기존) -->
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-chart-area mr-2 text-green-500"></i>월별 추이 (최근 13개월)</h3>
+    <div class="chart-wrap-lg"><canvas id="ov-trend"></canvas></div>
+  </div>
+
+  <!-- 2026년 이후 트렌드 섹션 -->
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-line mr-2 text-blue-500"></i>융자잔고 추이 — 신용 / 담보 <span class="text-xs font-normal text-gray-400 ml-1">(2026.1월~)</span></h3>
+    <p class="text-xs text-gray-400 mb-3">시스템설정 상품그룹 기준 집계</p>
+    <div class="chart-wrap-lg"><canvas id="ov-bal-grp"></canvas></div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-bar mr-2 text-green-500"></i>신규대출 — 신용 상품별 <span class="text-xs font-normal text-gray-400 ml-1">(2026.1월~)</span></h3>
+      <p class="text-xs text-gray-400 mb-3">첨담보 · 차량 · 회생 · 신용</p>
+      <div class="chart-wrap-lg"><canvas id="ov-nl-credit"></canvas></div>
+    </div>
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>신규대출 — 담보 상품별 <span class="text-xs font-normal text-gray-400 ml-1">(2026.1월~)</span></h3>
+      <p class="text-xs text-gray-400 mb-3">담보론(토마토토탈론) · 담보론(지분)(토마토토탈론플러스)</p>
+      <div class="chart-wrap-lg"><canvas id="ov-nl-collateral"></canvas></div>
+    </div>
+  </div>
+  \` : ''}
 </div>\`;
 
   setTimeout(()=>{
@@ -1445,10 +1471,73 @@ function renderOverview(el) {
     const pArr=Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).slice(0,15);
     mkBar('ov-bar',pArr.map(([p])=>p),[{label:'잔고',data:pArr.map(([,v])=>v.balance/100000000),backgroundColor:pArr.map(([p])=>getCategoryOfProduct(p).color+'cc')}],{extra:{scales:{y:{ticks:{callback:v=>v.toFixed(0)+'억'}}}}});
     if(TREND){
+      // 기존 연체율 추이
       mkLine('ov-trend',TREND.months,[
         {label:'융자잔고(억)',data:TREND.total.balance.map(b=>b.amount),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true},
         {label:'30일연체율(%)',data:TREND.total.overdue.map(o=>o.rate_30),borderColor:'#dc2626',yAxisID:'y1'}
       ],{y1:true});
+
+      // ── 2026.1월~ 신용/담보 융자잔고·신규대출 추이 ─────────────────
+      const jan26i = TREND.months.indexOf('26.1월');
+      if(jan26i >= 0){
+        const months26 = TREND.months.slice(jan26i);
+        const tProds   = TREND.products || [];
+
+        // 담보 상품 (data.json 실제 이름 기준)
+        const COLL_PRODS = ['토마토토탈론','토마토토탈론플러스','전월세론'];
+
+        // 융자잔고 집계: 담보 합산 / 신용 = 전체 - 담보
+        const collBal = months26.map((_,mi)=>{
+          return tProds.filter(p=>COLL_PRODS.includes(p.name))
+                       .reduce((s,p)=>s+(p.balance[jan26i+mi]?.amount||0),0);
+        });
+        const creditBal = months26.map((_,mi)=>{
+          const tot = tProds.reduce((s,p)=>s+(p.balance[jan26i+mi]?.amount||0),0);
+          return tot - collBal[mi];
+        });
+
+        mkLine('ov-bal-grp', months26,[
+          {label:'신용(억)', data:creditBal, borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.07)', fill:true},
+          {label:'담보(억)', data:collBal,   borderColor:'#059669', backgroundColor:'rgba(5,150,105,.07)',  fill:true}
+        ],{extra:{scales:{y:{ticks:{callback:v=>v.toFixed(0)+'억'}}}}});
+
+        // ── 신규대출 신용 상품별: 첨담보·차량·회생·신용 ─────────────
+        const nlCreditNames  = ['첨담보','차량','회생','신용'];
+        const nlCreditColors = ['#2563eb','#7c3aed','#dc2626','#059669'];
+        mkLine('ov-nl-credit', months26,
+          nlCreditNames.map((name,i)=>({
+            label: name+'(억)',
+            data:  months26.map((_,mi)=>{
+              const p = tProds.find(x=>x.name===name);
+              return p ? (p.new_loans[jan26i+mi]?.amount||0) : 0;
+            }),
+            borderColor:     nlCreditColors[i],
+            backgroundColor: nlCreditColors[i]+'18',
+            fill: false
+          })),
+          {extra:{scales:{y:{ticks:{callback:v=>v.toFixed(1)+'억'}}}}}
+        );
+
+        // ── 신규대출 담보 상품별: 담보론·담보론(지분) ────────────────
+        // data.json 상품명: 토마토토탈론(담보론), 토마토토탈론플러스(담보론-지분)
+        const nlCollDefs = [
+          {label:'담보론',        name:'토마토토탈론',        color:'#1e40af'},
+          {label:'담보론(지분)',  name:'토마토토탈론플러스',  color:'#0891b2'},
+        ];
+        mkLine('ov-nl-collateral', months26,
+          nlCollDefs.map(d=>({
+            label: d.label+'(억)',
+            data:  months26.map((_,mi)=>{
+              const p = tProds.find(x=>x.name===d.name);
+              return p ? (p.new_loans[jan26i+mi]?.amount||0) : 0;
+            }),
+            borderColor:     d.color,
+            backgroundColor: d.color+'18',
+            fill: false
+          })),
+          {extra:{scales:{y:{ticks:{callback:v=>v.toFixed(1)+'억'}}}}}
+        );
+      }
     }
   },50);
 }
