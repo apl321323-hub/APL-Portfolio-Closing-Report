@@ -1598,18 +1598,18 @@ function renderOverview(el) {
       if(jan26i >= 0){
         const months26 = TREND.months.slice(jan26i);
         const tProds   = TREND.products || [];
+        const tTotal   = TREND.total;
 
-        // 담보 상품 (data.json 실제 이름 기준)
-        const COLL_PRODS = ['토마토토탈론','토마토토탈론플러스','전월세론'];
-
-        // 융자잔고 집계: 담보 합산 / 신용 = 전체 - 담보
-        const collBal = months26.map((_,mi)=>{
-          return tProds.filter(p=>COLL_PRODS.includes(p.name))
-                       .reduce((s,p)=>s+(p.balance[jan26i+mi]?.amount||0),0);
-        });
+        // ★ 올바른 신용/담보 분리 (잔고 구성비와 동일한 기준)
+        // data.json의 '신용' product = 담보 제외 전체 신용 합산값
+        // 담보 = total.balance - 신용  (data.json에 담보론 product 항목 없음)
+        const pCredit  = tProds.find(p=>p.name==='신용');
         const creditBal = months26.map((_,mi)=>{
-          const tot = tProds.reduce((s,p)=>s+(p.balance[jan26i+mi]?.amount||0),0);
-          return tot - collBal[mi];
+          return pCredit ? (pCredit.balance[jan26i+mi]?.amount||0) : 0;
+        });
+        const collBal = months26.map((_,mi)=>{
+          const tot = tTotal.balance[jan26i+mi]?.amount||0;
+          return tot - creditBal[mi];
         });
 
         mkLine('ov-bal-grp', months26,[
