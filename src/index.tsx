@@ -416,7 +416,44 @@ function getMonthsDB() {
   try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch(e){ return {}; }
 }
 function saveMonthsDB(db) {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  // 레코드 슬림화: 빈 문자열 필드 제거해서 크기 절약
+  const slim = {};
+  for (const [k, v] of Object.entries(db)) {
+    slim[k] = {
+      ...v,
+      records: (v.records || []).map(r => {
+        const o = {};
+        for (const [fk, fv] of Object.entries(r)) {
+          if (fv !== '' && fv !== null) o[fk] = fv;
+        }
+        return o;
+      })
+    };
+  }
+  const json = JSON.stringify(slim);
+  // 저장 크기 안내 (디버그용)
+  const kb = (json.length / 1024).toFixed(0);
+
+  try {
+    localStorage.setItem(DB_KEY, json);
+  } catch(e) {
+    // QuotaExceededError: 가장 오래된 월 1개 삭제 후 재시도
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      const keys = Object.keys(slim).sort(); // 오름차순 = 오래된 순
+      if (keys.length > 1) {
+        const oldest = keys[0];
+        delete slim[oldest];
+        try {
+          localStorage.setItem(DB_KEY, JSON.stringify(slim));
+          alert('저장 공간이 부족하여 가장 오래된 월 데이터(' + oldest.slice(0,4) + '년 ' + parseInt(oldest.slice(4)) + '월)를 자동 삭제하고 저장했습니다. 현재 저장 크기: ' + kb + 'KB / 5120KB');
+          return;
+        } catch(e2) { /* 그래도 실패하면 아래 alert */ }
+      }
+      alert('저장 공간이 부족합니다 (' + kb + 'KB / 5120KB). 결산자료 업로드 페이지에서 불필요한 이전 월 데이터를 삭제해주세요.');
+    } else {
+      throw e;
+    }
+  }
 }
 function getMonthKeys() {
   return Object.keys(getMonthsDB()).sort().reverse(); // 최신순
@@ -439,9 +476,9 @@ async function preloadContractFiles() {
       const data = await res.json();
       db[item.key] = data;
       changed = true;
-      console.log(\`[계약리스트] \${item.key} 자동 로드 완료 (\${data.count}건)\`);
+      console.log('[계약리스트] ' + item.key + ' 자동 로드 완료 (' + data.count + '건)');
     } catch(e) {
-      console.warn(\`[계약리스트] \${item.key} 로드 실패:\`, e);
+      console.warn('[계약리스트] ' + item.key + ' 로드 실패:', e);
     }
   }
   if (changed) saveContractDB(db);
@@ -723,6 +760,14 @@ function mkLine(id,labels,datasets,opts={}){const ctx=document.getElementById(id
 function renderUploadPage(el) {
   const db = getMonthsDB();
   const months = getMonthKeys();
+
+  // localStorage 사용량 계산
+  const usedBytes = (localStorage.getItem(DB_KEY) || '').length;
+  const usedKB = (usedBytes / 1024).toFixed(0);
+  const maxKB = 5120;
+  const usedPct = Math.min(100, Math.round(usedBytes / 1024 / maxKB * 100));
+  const gaugeColor = usedPct >= 80 ? '#ef4444' : usedPct >= 60 ? '#f97316' : '#2563eb';
+
   el.innerHTML = \`
 <div class="space-y-5">
   <div class="flex items-center justify-between">
@@ -733,6 +778,19 @@ function renderUploadPage(el) {
     <button onclick="openUploadModal()" class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">
       <i class="fas fa-upload"></i> 새 월 업로드
     </button>
+  </div>
+
+  <!-- 저장 공간 게이지 -->
+  <div class="card p-4 \${usedPct >= 80 ? 'bg-red-50 border-red-100' : 'bg-gray-50'}">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-bold text-gray-600"><i class="fas fa-hdd mr-1.5"></i>브라우저 저장 공간 (localStorage)</span>
+      <span class="text-xs font-bold" style="color:\${gaugeColor}">\${usedKB}KB / \${maxKB}KB (\${usedPct}%)</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2">
+      <div class="h-2 rounded-full transition-all" style="width:\${usedPct}%;background:\${gaugeColor}"></div>
+    </div>
+    \${usedPct >= 80 ? '<p class="text-xs text-red-600 mt-1.5"><i class="fas fa-exclamation-triangle mr-1"></i>저장 공간이 부족합니다. 오래된 월 데이터를 삭제해주세요.</p>' : ''}
+    <p class="text-xs text-gray-400 mt-1.5">결산자료 1개월 ≈ 1,200~2,000KB · 최대 2~3개월 저장 가능</p>
   </div>
 
   <!-- 안내 카드 -->
@@ -763,12 +821,14 @@ function renderUploadPage(el) {
           const y = m.slice(0,4), mo = parseInt(m.slice(4));
           const total = d.records.reduce((s,r)=>s+(r.b||0),0);
           const isActive = LOAN && LOAN.base_date && LOAN.base_date.startsWith(m.slice(0,4)+'-'+m.slice(4));
+          const recKB = Math.round(JSON.stringify(d).length / 1024);
           return \`<div class="month-row \${isActive?'border-blue-300 bg-blue-50':''}">
             <div class="month-dot \${isActive?'bg-blue-500':'bg-green-400'}"></div>
             <div class="flex-1">
               <div class="flex items-center gap-2">
                 <span class="font-bold text-gray-800">\${y}년 \${mo}월</span>
                 \${isActive?'<span class="badge badge-blue">현재 선택</span>':''}
+                <span class="text-xs text-gray-400">≈\${recKB}KB</span>
               </div>
               <p class="text-xs text-gray-500 mt-0.5">기준일 \${d.base_date} · \${fmtN(d.count)}건 · 잔고 \${fmtAmt(total)} · 업로드 \${d.uploaded_at||'-'}</p>
             </div>
@@ -784,7 +844,6 @@ function renderUploadPage(el) {
   </div>
 </div>\`;
 }
-
 // ==================== 계약리스트 스토리지 ====================
 function getContractDB() {
   try { return JSON.parse(localStorage.getItem(CONTRACT_DB_KEY) || '{}'); } catch(e){ return {}; }
