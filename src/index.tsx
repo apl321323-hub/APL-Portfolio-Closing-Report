@@ -523,6 +523,7 @@ async function init() {
     }
 
     refreshSidebarMonths();
+    augmentTrendFromStorage(); // localStorage 결산자료로 TREND 누락 월 보완 (렌더 직전)
     renderPage();
 
     // 3. 계약리스트 사전 로드 (백그라운드 - 렌더링 차단 안 함)
@@ -533,6 +534,120 @@ async function init() {
   } catch(e) {
     document.getElementById('main-content').innerHTML =
       '<div class="flex items-center justify-center h-64 text-red-500"><i class="fas fa-exclamation-circle mr-2"></i>초기 로드 실패: '+e.message+'</div>';
+  }
+}
+
+// ==================== TREND 동적 보완 ====================
+// localStorage 결산자료에서 TREND에 없는 월을 계산해서 추가
+function augmentTrendFromStorage() {
+  if (!TREND) return;
+  const db = getMonthsDB();
+  const keys = Object.keys(db).sort(); // 오름차순
+  if (keys.length === 0) return;
+
+  // ── 담보 상품 목록 (CATEGORIES c1 기준) ──────────────
+  // CATEGORIES가 로드된 경우 c1(담보상품)의 products 사용, 아니면 기본값
+  const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : [
+    { id:'c1', name:'담보상품', products:['담보론','담보론(지분대출)'] },
+  ];
+  const collProductNames = (catsNow.find(c=>c.id==='c1') || {products:['담보론','담보론(지분대출)']}).products;
+
+  // ── data.json에 없는 외부 분류명: loan_data로 집계 불가 → 0 처리 ─
+  // '신용' = loan_data에서 담보 제외 전체 합산 (특별처리)
+  // '첨담보','차량','회생','신용(기타)' = 외부 시스템 분류 → 0
+  const ZERO_NAMES = new Set(['첨담보','차량','신용(기타)']);
+
+  for (const yyyymm of keys) {
+    // yyyymm → "26.7월" 형식
+    const yr  = parseInt(yyyymm.slice(0,4)) - 2000; // 2026 → 26
+    const mo  = parseInt(yyyymm.slice(4));           // 07 → 7
+    const label = yr + '.' + mo + '월';              // "26.7월"
+
+    // 이미 TREND에 있으면 스킵
+    if (TREND.months.includes(label)) continue;
+
+    const loanData = db[yyyymm];
+    if (!loanData || !loanData.records) continue;
+    const recs = loanData.records;
+
+    // ── 전체 집계 ──────────────────────────────────────
+    const totalBal  = recs.reduce((s,r)=>s+(r.b||0),0);
+    const totalCnt  = recs.length;
+    const od10amt   = recs.filter(r=>r.d>10).reduce((s,r)=>s+(r.b||0),0);
+    const od30amt   = recs.filter(r=>r.d>30).reduce((s,r)=>s+(r.b||0),0);
+    const od10rate  = totalBal>0 ? parseFloat((od10amt/totalBal*100).toFixed(2)) : 0;
+    const od30rate  = totalBal>0 ? parseFloat((od30amt/totalBal*100).toFixed(2)) : 0;
+    const rw = recs.reduce((s,r)=>r.r>0&&r.b>0?s+r.b*r.r:s,0);
+    const rb = recs.reduce((s,r)=>r.r>0&&r.b>0?s+r.b:s,0);
+    const avgRate   = rb>0 ? parseFloat((rw/rb).toFixed(2)) : 0;
+    const newRecs   = recs.filter(r=>r.ct==='신규');
+    const newBal    = newRecs.reduce((s,r)=>s+(r.b||0),0);
+    const newCnt    = newRecs.length;
+
+    // ── total append ────────────────────────────────
+    TREND.total.balance.push({ month:label, count:totalCnt, amount:parseFloat((totalBal/100000000).toFixed(2)), rate:avgRate });
+    TREND.total.new_loans.push({ month:label, request:0, approve:newCnt, approve_rate:0, amount:parseFloat((newBal/100000000).toFixed(2)) });
+    TREND.total.repay.push({ month:label, amount:0, rate:0 });
+    TREND.total.overdue.push({ month:label, amount_10:parseFloat((od10amt/100000000).toFixed(2)), rate_10:od10rate,
+                                            amount_30:parseFloat((od30amt/100000000).toFixed(2)), rate_30:od30rate });
+    TREND.months.push(label);
+
+    // ── 상품별 집계 (loan_data 상품명 기준) ─────────────
+    const byProd = {};
+    for (const r of recs) {
+      if (!byProd[r.p]) byProd[r.p] = {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
+      byProd[r.p].bal += r.b||0;
+      byProd[r.p].cnt++;
+      if (r.ct==='신규') { byProd[r.p].newBal+=r.b||0; byProd[r.p].newCnt++; }
+      if (r.d>10) byProd[r.p].od10+=r.b||0;
+      if (r.d>30) byProd[r.p].od30+=r.b||0;
+    }
+
+    // ── '신용' 합산 집계 (담보 제외 전체) ───────────────
+    // data.json의 '신용'은 담보 상품군을 제외한 전체 신용 대출 합산값
+    const creditAgg = {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
+    for (const r of recs) {
+      if (collProductNames.includes(r.p)) continue; // 담보 제외
+      creditAgg.bal  += r.b||0;
+      creditAgg.cnt++;
+      if (r.ct==='신규') { creditAgg.newBal+=r.b||0; creditAgg.newCnt++; }
+      if (r.d>10) creditAgg.od10+=r.b||0;
+      if (r.d>30) creditAgg.od30+=r.b||0;
+    }
+
+    // ── TREND.products append ────────────────────────
+    if (!TREND.products) TREND.products = [];
+    for (const tp of TREND.products) {
+      let v;
+      if (tp.name === '신용') {
+        // 담보 제외 전체 합산
+        v = creditAgg;
+      } else if (ZERO_NAMES.has(tp.name)) {
+        // 외부 시스템 전용 분류 → loan_data로 집계 불가, 0 처리
+        v = {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
+      } else {
+        // loan_data 상품명과 직접 1:1 매핑 (없으면 0)
+        v = byProd[tp.name] || {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
+      }
+      const vBal = tp.name === '신용' ? v.bal : v.bal; // 동일, 명시적으로
+      tp.balance.push({
+        month:label, count:v.cnt,
+        amount:parseFloat((vBal/100000000).toFixed(2)), rate:avgRate
+      });
+      tp.new_loans.push({
+        month:label, request:0, approve:v.newCnt, approve_rate:0,
+        amount:parseFloat((v.newBal/100000000).toFixed(2))
+      });
+      tp.repay.push({month:label, amount:0, rate:0});
+      tp.overdue.push({
+        month:label,
+        amount_10:parseFloat((v.od10/100000000).toFixed(2)),
+        rate_10: totalBal>0 ? parseFloat((v.od10/totalBal*100).toFixed(2)) : 0,
+        amount_30:parseFloat((v.od30/100000000).toFixed(2)),
+        rate_30: totalBal>0 ? parseFloat((v.od30/totalBal*100).toFixed(2)) : 0,
+      });
+    }
+    console.log('[TREND 보완] ' + label + ' 추가 완료 (잔고 ' + (totalBal/100000000).toFixed(0) + '억, ' + totalCnt + '건)');
   }
 }
 
@@ -1357,6 +1472,7 @@ function saveUploadedData() {
   document.getElementById('sb-active-month').textContent = y+'년 '+parseInt(mo)+'월';
 
   refreshSidebarMonths(key);
+  augmentTrendFromStorage(); // 새 결산자료 업로드 시 TREND 누락 월 즉시 보완
   closeUploadModal();
   goPage('overview');
 }
