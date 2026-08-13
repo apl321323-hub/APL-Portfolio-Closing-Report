@@ -1942,7 +1942,7 @@ function renderProduct(el) {
   <div class="card p-5">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-blue-500"></i>상품별 종합 현황</h3>
     <div class="overflow-auto">
-      <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>10일초과 연체금</th><th>10일초과(%)</th><th>30일초과(%)</th><th>90일초과(%)</th></tr></thead>
+      <table class="data-table"><thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>평균LTV</th><th>10일이상 연체금</th><th>10일이상 연체율</th><th>30일초과(%)</th><th>90일초과(%)</th></tr></thead>
       <tbody>\${pArr.map(([p,v],i)=>{
         const cat=getCategoryOfProduct(p);const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
         // 평균LTV: 담보론, 담보론(지분대출), 토마토토탈론, 토마토토탈론플러스만 표시 — Σ담보대출 / Σ감정가 × 100
