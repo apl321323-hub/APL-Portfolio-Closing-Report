@@ -2204,9 +2204,31 @@ function _buildBalanceCardItems(agGrpData, total) {
         + '</div>';
     }).join('');
 
+    // 카테고리 합산 (전체 그룹 합계)
+    const catTotalBal   = cat.balance;
+    const catTotalCount = cat.count;
+    const catTotalPct   = total > 0 ? (catTotalBal / total * 100) : 0;
+    const catAvgR       = cat.rateBalSum > 0 ? (cat.rateWSum / cat.rateBalSum).toFixed(2) : '-';
+    const catOd10r      = catTotalBal > 0 ? (cat.bal10Over / catTotalBal * 100).toFixed(1) : '0';
+    // LTV: g1(담보) 그룹 합산
+    const g1            = cat.grpBal && cat.grpBal['g1'];
+    const catAvgLtv     = (g1 && g1.ltvAppSum > 0) ? (g1.ltvWSum / g1.ltvAppSum * 100).toFixed(1) : null;
+    const catOd10Num    = parseFloat(catOd10r);
+    const catOdColor    = catOd10Num >= 8 ? '#ef4444' : catOd10Num >= 4 ? '#f97316' : '#d1fae5';
+    const catOdTextColor = catOd10Num >= 8 ? '#fff' : catOd10Num >= 4 ? '#fff' : '#065f46';
+    const ltvSummary    = catAvgLtv !== null
+      ? '<span style="font-size:11px;color:rgba(255,255,255,0.85)">LTV <b style="color:#fff">' + catAvgLtv + '%</b></span>'
+      : '';
+
     return '<div class="card overflow-hidden">'
-      + '<div style="background:' + cat.color + ';padding:7px 16px;text-align:center">'
-        + '<span style="color:#fff;font-size:13px;font-weight:700">' + cat.name + '</span>'
+      + '<div style="background:' + cat.color + ';padding:7px 14px 7px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">'
+        + '<span style="color:#fff;font-size:13px;font-weight:700;white-space:nowrap">' + cat.name + '</span>'
+        + '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end">'
+          + '<span style="font-size:12px;color:rgba(255,255,255,0.9)">' + fmtAmt(catTotalBal) + ' / ' + fmtN(catTotalCount) + '건</span>'
+          + '<span style="font-size:12px;color:rgba(255,255,255,0.85)">금리 <b style="color:#fff">' + catAvgR + '%</b></span>'
+          + ltvSummary
+          + '<span style="font-size:11px;background:' + catOdColor + ';color:' + catOdTextColor + ';padding:1px 7px;border-radius:999px;font-weight:700">연체 ' + catOd10r + '%</span>'
+        + '</div>'
       + '</div>'
       + '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:0">'
         + grpPanels
