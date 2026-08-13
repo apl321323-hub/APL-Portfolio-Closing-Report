@@ -959,31 +959,29 @@ function aggregateByGroup() {
 
 // ==================== 에이전트 그룹 집계 ====================
 function aggregateByAgentGroup() {
-  // 에이전트 카테고리별 집계
+  // 에이전트 카테고리별 집계 (카드 단위)
   const catMap={};
   for(const c of AGENT_CATEGORIES){
-    catMap[c.id]={...c,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0};
+    catMap[c.id]={...c,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0,agents:{}};
   }
-  catMap['__none__']={id:'__none__',name:'미분류',color:'#9ca3af',count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0};
+  catMap['__none__']={id:'__none__',name:'미분류',color:'#9ca3af',order:999,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0,agents:{}};
   for(const r of LOAN.records){
-    const cat=getCategoryOfAgent(r.a||'기타');
+    const aname=r.a||'기타';
+    const cat=getCategoryOfAgent(aname);
     const cm=catMap[cat.id]||catMap['__none__'];
     cm.count++;cm.balance+=r.b;
     if(r.r>0&&r.b>0){cm.rateWSum+=r.b*r.r;cm.rateBalSum+=r.b;}
     if(r.d>10){cm.bal10Over+=r.b;}
+    // 카테고리 내 에이전트별 집계
+    if(!cm.agents[aname])cm.agents[aname]={name:aname,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0};
+    const am=cm.agents[aname];
+    am.count++;am.balance+=r.b;
+    if(r.r>0&&r.b>0){am.rateWSum+=r.b*r.r;am.rateBalSum+=r.b;}
+    if(r.d>10){am.bal10Over+=r.b;}
   }
-  // 에이전트 그룹별 집계
-  const grpMap={};
-  const allGrps=[...AGENT_GROUPS,{id:'__none__',name:'미배정',color:'#9ca3af',categoryIds:[]}];
-  for(const g of allGrps)grpMap[g.id]={...g,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0,cats:[]};
-  for(const[cid,cv] of Object.entries(catMap)){
-    if(cv.count===0)continue;
-    const grp=getAgentGroupOfCategory(cid);
-    const gm=grpMap[grp.id];if(!gm)continue;
-    gm.count+=cv.count;gm.balance+=cv.balance;gm.rateWSum+=cv.rateWSum;gm.rateBalSum+=cv.rateBalSum;gm.bal10Over+=cv.bal10Over;
-    gm.cats.push(cv);
-  }
-  return Object.values(grpMap).filter(g=>g.count>0);
+  return Object.values(catMap)
+    .filter(c=>c.count>0)
+    .sort((a,b)=>(a.order||99)-(b.order||99));
 }
 
 // ==================== 차트 ====================
@@ -2033,64 +2031,67 @@ function renderAgent(el) {
 <div class="space-y-5">
   <h2 class="text-lg font-bold">에이전트(광고매체) 분석</h2>
   \${agGrpData.length>0?\`
-  <!-- ── 에이전트 그룹 구분선 바 ── -->
+  <!-- ── 에이전트 카테고리 구분선 바 ── -->
   <div class="flex rounded-xl overflow-hidden h-8">
-    \${agGrpData.map(g=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(g.balance/total*100).toFixed(1)}%;background:\${g.color}" title="\${g.name}: \${fmtAmt(g.balance)}">\${(g.balance/total*100)>=6?g.name:''}</div>\`).join('')}
+    \${agGrpData.map(c=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(c.balance/total*100).toFixed(1)}%;background:\${c.color}" title="\${c.name}: \${fmtAmt(c.balance)}">\${(c.balance/total*100)>=6?c.name:''}</div>\`).join('')}
   </div>
 
-  <!-- ── 에이전트 그룹별 카드 ── -->
-  <div class="grid gap-3" style="grid-template-columns:repeat(\${agGrpData.length},1fr)">
-    \${agGrpData.map(g=>{
-      const gpct=(g.balance/total*100);
-      const avgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';
-      const od10r=g.balance>0?(g.bal10Over/g.balance*100).toFixed(1):'0';
+  <!-- ── 에이전트 카테고리별 카드 (카드 안: 개별 에이전트) ── -->
+  <div class="grid gap-3" style="grid-template-columns:repeat(\${Math.min(agGrpData.length,3)},1fr)">
+    \${agGrpData.map(c=>{
+      const cpct=(c.balance/total*100);
+      const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
+      const od10r=c.balance>0?(c.bal10Over/c.balance*100).toFixed(1):'0';
       const od10Num=parseFloat(od10r);
       const odColor=od10Num>=8?'color:#dc2626':od10Num>=4?'color:#f97316':'color:#16a34a';
-      const catRows=g.cats.sort((a,b)=>b.balance-a.balance).map(c=>{
-        const cpct=(c.balance/total*100);
-        const gcpct=g.balance>0?(c.balance/g.balance*100):0;
-        const cr=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
-        const cod10r=c.balance>0?((c.bal10Over||0)/c.balance*100).toFixed(1):'0';
-        const cod10Num=parseFloat(cod10r);
-        const cod10Style=cod10Num>=8?'color:#dc2626;font-weight:700':cod10Num>=4?'color:#f97316':'color:#16a34a';
+      // 카테고리 내 에이전트 행 (잔고 내림차순)
+      const agentRows=Object.values(c.agents).sort((a,b)=>b.balance-a.balance).map(ag=>{
+        const apct=c.balance>0?(ag.balance/c.balance*100):0;
+        const totpct=total>0?(ag.balance/total*100):0;
+        const ar=ag.rateBalSum>0?(ag.rateWSum/ag.rateBalSum).toFixed(2):'-';
+        const aod10r=ag.balance>0?((ag.bal10Over||0)/ag.balance*100).toFixed(1):'0';
+        const aod10Num=parseFloat(aod10r);
+        const aod10Style=aod10Num>=8?'color:#dc2626;font-weight:700':aod10Num>=4?'color:#f97316':'color:#16a34a';
         return \`<tr style="border-top:1px solid #f3f4f6">
           <td style="padding:6px 8px;width:10px">
-            <div style="width:8px;height:8px;border-radius:50%;background:\${c.color};flex-shrink:0"></div>
+            <div style="width:7px;height:7px;border-radius:50%;background:\${c.color}55;flex-shrink:0"></div>
           </td>
           <td style="padding:6px 4px;white-space:nowrap">
-            <span style="font-size:12px;font-weight:700;color:#374151">\${c.name}</span>
+            <span style="font-size:12px;font-weight:600;color:#374151">\${ag.name}</span>
           </td>
           <td style="padding:6px 4px;text-align:right">
-            <span style="font-size:13px;font-weight:900;line-height:1;color:\${c.color}">\${cpct.toFixed(1)}%</span>
-            <div style="font-size:10px;color:#9ca3af">그룹내 \${gcpct.toFixed(1)}%</div>
+            <span style="font-size:12px;font-weight:800;color:\${c.color}">\${totpct.toFixed(1)}%</span>
+            <div style="font-size:10px;color:#9ca3af">카테고리내 \${apct.toFixed(1)}%</div>
           </td>
           <td style="padding:6px 4px;text-align:right">
-            <span style="font-size:12px;font-weight:600;color:#1f2937">\${fmtAmt(c.balance)}</span>
-            <div style="font-size:10px;color:#9ca3af">\${fmtN(c.count)}건</div>
+            <span style="font-size:12px;font-weight:600;color:#1f2937">\${fmtAmt(ag.balance)}</span>
+            <div style="font-size:10px;color:#9ca3af">\${fmtN(ag.count)}건</div>
           </td>
           <td style="padding:6px 4px;text-align:right">
-            <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${cr}%</b></span>
+            <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${ar}%</b></span>
           </td>
           <td style="padding:6px 8px;text-align:right">
-            <span style="font-size:11px;\${cod10Style}">연체 \${cod10r}%</span>
+            <span style="font-size:11px;\${aod10Style}">연체 \${aod10r}%</span>
           </td>
         </tr>\`;
       }).join('');
-      return \`<div class="card" style="border-top:3px solid \${g.color};overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${g.color}08">
+      return \`<div class="card" style="border-top:3px solid \${c.color};overflow:hidden">
+        <!-- 카테고리 헤더 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${c.color}08">
           <div style="display:flex;align-items:center;gap:6px">
-            <div style="width:10px;height:10px;border-radius:50%;background:\${g.color}"></div>
-            <span style="font-size:13px;font-weight:700;color:#374151">\${g.name}</span>
-            <span style="font-size:22px;font-weight:900;line-height:1;color:\${g.color}">\${gpct.toFixed(1)}%</span>
+            <div style="width:10px;height:10px;border-radius:50%;background:\${c.color}"></div>
+            <span style="font-size:13px;font-weight:700;color:#374151">\${c.name}</span>
+            <span style="font-size:22px;font-weight:900;line-height:1;color:\${c.color}">\${cpct.toFixed(1)}%</span>
           </div>
           <div style="display:flex;gap:10px;font-size:11px;color:#6b7280">
-            <span>\${fmtAmt(g.balance)} / \${fmtN(g.count)}건</span>
+            <span>\${fmtAmt(c.balance)} / \${fmtN(c.count)}건</span>
             <span>금리 <b style="color:#374151">\${avgR}%</b></span>
             <span>연체 <b style="\${odColor}">\${od10r}%</b></span>
           </div>
         </div>
+        <!-- 에이전트 리스트 -->
         <table style="width:100%;border-collapse:collapse">
-          <tbody>\${catRows}</tbody>
+          <tbody>\${agentRows}</tbody>
         </table>
       </div>\`;
     }).join('')}
