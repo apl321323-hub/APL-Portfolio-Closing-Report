@@ -593,12 +593,25 @@ function augmentTrendFromStorage() {
     const mo  = parseInt(yyyymm.slice(4));           // 07 → 7
     const label = yr + '.' + mo + '월';              // "26.7월"
 
-    // 이미 TREND에 있으면 스킵
-    if (TREND.months.includes(label)) continue;
-
     const loanData = db[yyyymm];
     if (!loanData || !loanData.records) continue;
     const recs = loanData.records;
+
+    // ── loan_data가 있으면 항상 g1/g2 집계 → __creditByMonth/__collateralByMonth 갱신 ──
+    // (data.json에 이미 있는 월이라도 CATEGORIES/GROUPS 기준값으로 덮어씀)
+    const _creditAggPre  = {bal:0};
+    const _collAggPre    = {bal:0};
+    for (const r of recs) {
+      if (creditProds.includes(r.p)) _creditAggPre.bal += r.b||0;
+      if (collProds.includes(r.p))   _collAggPre.bal   += r.b||0;
+    }
+    if (!TREND.__creditByMonth)      TREND.__creditByMonth      = {};
+    if (!TREND.__collateralByMonth)  TREND.__collateralByMonth  = {};
+    TREND.__creditByMonth[label]     = parseFloat((_creditAggPre.bal/100000000).toFixed(2));
+    TREND.__collateralByMonth[label] = parseFloat((_collAggPre.bal/100000000).toFixed(2));
+
+    // 이미 TREND에 있는 월은 total/products append 불필요 → 스킵
+    if (TREND.months.includes(label)) continue;
 
     // ── 전체 집계 ──────────────────────────────────────
     const totalBal  = recs.reduce((s,r)=>s+(r.b||0),0);
@@ -689,12 +702,7 @@ function augmentTrendFromStorage() {
       });
     }
 
-    // ── __collateral__ product: g1 담보 집계 저장 (추이 차트 전용) ────
-    // TREND.products에 없는 특수 product로 g1 합산값 보관
-    if (!TREND.__collateralByMonth) TREND.__collateralByMonth = {};
-    TREND.__collateralByMonth[label] = parseFloat((collAgg.bal/100000000).toFixed(2));
-    if (!TREND.__creditByMonth) TREND.__creditByMonth = {};
-    TREND.__creditByMonth[label] = parseFloat((creditAgg.bal/100000000).toFixed(2));
+    // ── __collateralByMonth / __creditByMonth 는 루프 상단에서 이미 저장됨 ──
 
     console.log('[TREND 보완] ' + label + ' 추가 완료 (잔고 ' + (totalBal/100000000).toFixed(0) + '억, 담보 ' + (collAgg.bal/100000000).toFixed(0) + '억, 신용 ' + (creditAgg.bal/100000000).toFixed(0) + '억, ' + totalCnt + '건)');
   }
