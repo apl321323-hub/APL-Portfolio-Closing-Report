@@ -1404,6 +1404,7 @@ function processContractFile(file) {
       const colCF = hIdx('최종감정가');        // EL
       const colCG = hIdx('소유비율합계');      // EM
       const colCH = hIdx('지분율대출원금합계'); // EN
+      const colCtC = hIdx('계약구분');         // Q열 (신규/추가대출/재대출/만기연장(전환) 등)
 
       if(colP<0||colAmt<0) throw new Error('상품명 또는 대출액 컬럼을 찾을 수 없습니다');
 
@@ -1428,6 +1429,7 @@ function processContractFile(file) {
           dt:  row[colDt]?String(row[colDt]).slice(0,10):'',
           loanAmt:   isCollateral ? (amt+chVal) : 0,
           appraised: isCollateral ? (cfVal*cgVal/100) : 0,
+          ct:  String(row[colCtC]||'').trim(),  // 계약구분 (신규/추가대출/재대출/만기연장(전환))
         });
       }
 
@@ -2570,7 +2572,16 @@ function renderNewLoan(el) {
     newLoanSelectedKey = keys[0];
   }
   const d    = contractDB[newLoanSelectedKey];
-  const recs = d.records || [];
+  const allRecs = d.records || [];
+
+  // ── 만기연장(전환) 제외: 신규/추가대출/재대출만 집계
+  // ct 필드가 없는 구버전 데이터는 전체 포함 (하위 호환)
+  const hasCt = allRecs.some(r => r.ct && r.ct.length > 0);
+  const EXCLUDE_CT = ['만기연장(전환)', '만기연장'];
+  const recs = hasCt
+    ? allRecs.filter(r => !EXCLUDE_CT.includes(r.ct))
+    : allRecs;
+  const excludedCount = allRecs.length - recs.length;
 
   // ── 기본 집계
   const totalAmt   = recs.reduce((s,r) => s + (r.amt||0), 0);
@@ -2662,6 +2673,7 @@ function renderNewLoan(el) {
     <div>
       <h2 class="text-lg font-bold">신규대출 현황</h2>
       <p class="text-sm text-gray-500">계약리스트 기준 신규 실행 현황 | \${yk}년 \${mok}월 | 기준일: \${d.base_date}</p>
+      \${excludedCount > 0 ? \`<p class="text-xs text-amber-600 mt-0.5"><i class="fas fa-info-circle mr-1"></i>만기연장(전환) \${fmtN(excludedCount)}건 제외 · 신규/추가대출/재대출만 집계</p>\` : (hasCt ? '<p class="text-xs text-gray-400 mt-0.5"><i class="fas fa-check-circle mr-1 text-green-500"></i>만기연장(전환) 해당 없음</p>' : '<p class="text-xs text-gray-400 mt-0.5"><i class="fas fa-info-circle mr-1"></i>계약구분 미포함 데이터 (전체 집계)</p>')}
     </div>
     \${monthTabHtml}
   </div>
