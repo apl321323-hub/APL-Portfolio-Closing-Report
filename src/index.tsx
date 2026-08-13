@@ -2755,6 +2755,22 @@ function renderNewLoan(el) {
 
   <!-- 담보/신용 그룹별 구성 패널 + 카테고리 구성비 -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- 카테고리 구성비 파이 (1/3) -->
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>카테고리 구성비</h3>
+      <div style="height:200px"><canvas id="nl-cat-pie"></canvas></div>
+      <div class="mt-3 space-y-1">
+        \${catArr.map(c => {
+          const pct = (c.amt / totalAmt * 100).toFixed(1);
+          return \`<div class="flex items-center gap-2 text-xs">
+            <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
+            <span class="flex-1 truncate">\${c.name}</span>
+            <span class="font-bold">\${pct}%</span>
+            <span class="text-gray-400">\${fmtAmt(c.amt)}</span>
+          </div>\`;
+        }).join('')}
+      </div>
+    </div>
     <!-- 담보/신용 패널 (2/3) -->
     <div class="card overflow-hidden lg:col-span-2">
       <div style="display:grid;grid-template-columns:repeat(\${grpPanelArr.length},1fr)">
@@ -2819,22 +2835,6 @@ function renderNewLoan(el) {
             <table style="width:100%;border-collapse:collapse">
               <tbody>\${catRows}</tbody>
             </table>
-          </div>\`;
-        }).join('')}
-      </div>
-    </div>
-    <!-- 카테고리 구성비 파이 (1/3) -->
-    <div class="card p-5">
-      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>카테고리 구성비</h3>
-      <div style="height:200px"><canvas id="nl-cat-pie"></canvas></div>
-      <div class="mt-3 space-y-1">
-        \${catArr.map(c => {
-          const pct = (c.amt / totalAmt * 100).toFixed(1);
-          return \`<div class="flex items-center gap-2 text-xs">
-            <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
-            <span class="flex-1 truncate">\${c.name}</span>
-            <span class="font-bold">\${pct}%</span>
-            <span class="text-gray-400">\${fmtAmt(c.amt)}</span>
           </div>\`;
         }).join('')}
       </div>
