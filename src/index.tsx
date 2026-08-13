@@ -1978,37 +1978,68 @@ function renderAgent(el) {
   const total=LOAN.records.reduce((s,r)=>s+r.b,0);
   const aMap=aggregateByAgent();
   const aArr=Object.entries(aMap).sort((a,b)=>b[1].balance-a[1].balance);
+
+  // 에이전트 카테고리 기준 집계
+  const catBal={};
+  for(const [a,v] of aArr){
+    const cat=getCategoryOfAgent(a);
+    if(!catBal[cat.id]) catBal[cat.id]={name:cat.name,color:cat.color,balance:0,order:cat.order||99};
+    catBal[cat.id].balance+=v.balance;
+  }
+  const catArr=Object.values(catBal).sort((a,b)=>b.balance-a.balance);
+
   el.innerHTML=\`
 <div class="space-y-5">
   <h2 class="text-lg font-bold">에이전트(광고매체) 분석</h2>
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <!-- 카테고리 구성비 파이차트 (왼쪽 2/5) -->
     <div class="card p-5 lg:col-span-2">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2 text-green-500"></i>카테고리 구성비</h3>
+      <div style="height:220px"><canvas id="ag-pie"></canvas></div>
+      <div class="mt-3 space-y-1">
+        \${catArr.map(c=>{
+          const pct=total>0?(c.balance/total*100).toFixed(1):'0.0';
+          return \`<div class="flex items-center justify-between text-xs py-0.5">
+            <div class="flex items-center gap-1.5">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:\${c.color};flex-shrink:0"></span>
+              <span class="text-gray-700 font-medium">\${c.name}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="font-bold" style="color:\${c.color}">\${pct}%</span>
+              <span class="text-gray-500 w-16 text-right">\${fmtAmt(c.balance)}</span>
+            </div>
+          </div>\`;
+        }).join('')}
+      </div>
+    </div>
+    <!-- 에이전트별 잔고 바차트 (오른쪽 3/5) -->
+    <div class="card p-5 lg:col-span-3">
       <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-users mr-2 text-blue-500"></i>에이전트별 잔고</h3>
       <div class="chart-wrap-lg"><canvas id="ag-bar"></canvas></div>
-    </div>
-    <div class="card p-5">
-      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2 text-green-500"></i>구성비</h3>
-      <div style="height:260px"><canvas id="ag-pie"></canvas></div>
     </div>
   </div>
   <div class="card p-5">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-indigo-500"></i>에이전트별 상세</h3>
     <div class="overflow-auto">
-      <table class="data-table"><thead><tr><th>#</th><th>에이전트</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>30일연체건수</th><th>30일연체율</th></tr></thead>
+      <table class="data-table"><thead><tr><th>#</th><th>에이전트</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>30일연체건수</th><th>30일연체율</th></tr></thead>
       <tbody>\${aArr.map(([a,v],i)=>{
+        const cat=getCategoryOfAgent(a);
         const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';const odR=v.count>0?(v.overdue30/v.count*100).toFixed(1):'0';
-        return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${a}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
-        <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill bg-blue-400" style="width:\${pct}%"></div></div><span>\${pct}%</span></div></td>
+        return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${a}</td>
+        <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
+        <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
+        <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill" style="width:\${pct}%;background:\${cat.color}"></div></div><span>\${pct}%</span></div></td>
         <td>\${avgR}%</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="\${parseFloat(odR)>=8?'text-red-600 font-bold':parseFloat(odR)>=4?'text-orange-500':'text-green-600'}">\${odR}%</td></tr>\`;}).join('')}
       </tbody></table>
     </div>
   </div>
 </div>\`;
-  const colors=['#2563eb','#059669','#7c3aed','#d97706','#0891b2','#dc2626','#6366f1','#0d9488','#c026d3','#ea580c','#84cc16','#64748b','#be185d','#92400e','#1d4ed8','#15803d'];
   setTimeout(()=>{
+    // 파이차트: 카테고리 기준
+    mkPie('ag-pie',catArr.map(c=>c.name),catArr.map(c=>c.balance),catArr.map(c=>c.color));
+    // 바차트: 에이전트별 (카테고리 색상 적용)
     const top=aArr.slice(0,12);
-    mkBar('ag-bar',top.map(([a])=>a),[{label:'잔고',data:top.map(([,v])=>v.balance/100000000),backgroundColor:colors.slice(0,top.length)}],{extra:{indexAxis:'y',scales:{x:{ticks:{callback:v=>v+'억'}},y:{ticks:{font:{size:10}}}}}});
-    mkPie('ag-pie',top.map(([a])=>a),top.map(([,v])=>v.balance),colors.slice(0,top.length));
+    mkBar('ag-bar',top.map(([a])=>a),[{label:'잔고',data:top.map(([,v])=>v.balance/100000000),backgroundColor:top.map(([a])=>getCategoryOfAgent(a).color+'cc')}],{extra:{indexAxis:'y',scales:{x:{ticks:{callback:v=>v+'억'}},y:{ticks:{font:{size:10}}}}}});
   },50);
 }
 
