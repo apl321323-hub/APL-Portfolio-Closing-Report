@@ -1841,10 +1841,24 @@ function renderBalance(el) {
         </table>
       </div>\`;
     }).join('')}
-  </div>\`:''}\n\n  <!-- ── 상품별 잔고 현황 바 차트 ── -->
-  <div class="card p-5">
-    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2" style="color:#6366f1"></i>상품별 잔고 현황</h3>
-    <div class="chart-wrap-lg"><canvas id="bal-prod-bar"></canvas></div>
+  </div>\`:''}
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <div class="card p-5 lg:col-span-2">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2" style="color:#2563eb"></i>카테고리 구성비</h3>
+      <div style="height:260px"><canvas id="bal-pie"></canvas></div>
+      <div class="mt-3 space-y-1.5">
+        \${catData.map(c=>\`<div class="flex items-center gap-2 text-xs">
+          <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
+          <span class="flex-1">\${c.name}</span>
+          <span class="font-bold">\${(c.balance/total*100).toFixed(1)}%</span>
+          <span class="text-gray-400">\${fmtAmt(c.balance)}</span>
+        </div>\`).join('')}
+      </div>
+    </div>
+    <div class="card p-5 lg:col-span-3">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2" style="color:#6366f1"></i>상품별 잔고 현황</h3>
+      <div class="chart-wrap-lg"><canvas id="bal-prod-bar"></canvas></div>
+    </div>
   </div>
 
   <!-- ── 카테고리(하위) 상세 테이블 ── -->
@@ -1889,31 +1903,18 @@ function renderBalance(el) {
     </table>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
-    <div class="card p-5 lg:col-span-2">
-      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2" style="color:#2563eb"></i>카테고리 구성비</h3>
-      <div style="height:260px"><canvas id="bal-pie"></canvas></div>
-      <div class="mt-3 space-y-1.5">
-        \${catData.map(c=>\`<div class="flex items-center gap-2 text-xs">
-          <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
-          <span class="flex-1">\${c.name}</span>
-          <span class="font-bold">\${(c.balance/total*100).toFixed(1)}%</span>
-          <span class="text-gray-400">\${fmtAmt(c.balance)}</span>
-        </div>\`).join('')}
-      </div>
-    </div>
-    <div class="card p-5 lg:col-span-3">
-      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2" style="color:#059669"></i>상품별 상세</h3>
-      <div class="overflow-auto" style="max-height:380px">
-        <table class="data-table"><thead><tr><th>카테고리</th><th>상품명</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>연체율</th></tr></thead>
-        <tbody>\${Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).map(([p,v])=>{
-          const cat=getCategoryOfProduct(p);const pct2=(v.balance/total*100).toFixed(1);const avgR2=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
-          const odR=v.count>0?((v.overdue30+v.overdue60+v.overdue90+v.overdueMore)/v.count*100).toFixed(1):'0';
-          return \`<tr><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td><td class="font-medium">\${p}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
-          <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
-          <td>\${avgR2}%</td><td class="\${parseFloat(odR)>=5?'text-red-600 font-bold':parseFloat(odR)>=3?'text-orange-500':''}">\${odR}%</td></tr>\`;}).join('')}
-        </tbody></table>
-      </div>
+  <!-- ── 상품별 상세 테이블 ── -->
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2" style="color:#059669"></i>상품별 상세</h3>
+    <div class="overflow-auto" style="max-height:380px">
+      <table class="data-table"><thead><tr><th>카테고리</th><th>상품명</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>연체율</th></tr></thead>
+      <tbody>\${Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).map(([p,v])=>{
+        const cat=getCategoryOfProduct(p);const pct2=(v.balance/total*100).toFixed(1);const avgR2=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
+        const odR=v.count>0?((v.overdue30+v.overdue60+v.overdue90+v.overdueMore)/v.count*100).toFixed(1):'0';
+        return \`<tr><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td><td class="font-medium">\${p}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
+        <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
+        <td>\${avgR2}%</td><td class="\${parseFloat(odR)>=5?'text-red-600 font-bold':parseFloat(odR)>=3?'text-orange-500':''}">\${odR}%</td></tr>\`;}).join('')}
+      </tbody></table>
     </div>
   </div>
 </div>\`;
