@@ -1888,8 +1888,8 @@ function renderBalance(el) {
         const pct2=(v.balance/total*100).toFixed(1);
         const avgR2=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
         const avgLtv2=v.ltvAppSum>0?(v.ltvWSum/v.ltvAppSum*100).toFixed(1):'-';
-        const b10over=v.bal10+v.bal30_+v.bal60+v.bal90+v.balMore;
-        const b30over=v.bal30_+v.bal60+v.bal90+v.balMore;
+        const b10over=v.bal30_+v.bal60+v.bal90+v.balMore;
+        const b30over=v.bal60+v.bal90+v.balMore;
         const b90over=v.balMore;
         const od10r2=v.balance>0?(b10over/v.balance*100).toFixed(2):'0.00';
         const od30r2=v.balance>0?(b30over/v.balance*100).toFixed(2):'0.00';
