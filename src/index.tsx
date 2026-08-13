@@ -2924,56 +2924,6 @@ function renderNewLoan(el) {
     <div class="chart-wrap"><canvas id="nl-rate-bar"></canvas></div>
   </div>
 
-  <!-- 전체 계약 목록 -->
-  <div class="card p-5">
-    <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
-      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-list mr-2 text-gray-500"></i>전체 계약 목록 (\${fmtN(totalCount)}건)</h3>
-      <div class="flex items-center gap-2 flex-wrap">
-        <input id="nl-search" type="text" placeholder="상품명·에이전트 검색..." onkeyup="filterNewLoanTable()"
-          class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-40 outline-none focus:border-green-400"/>
-        <select id="nl-filter-prod" onchange="filterNewLoanTable()"
-          class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-green-400">
-          <option value="">전체 상품</option>
-          \${pArr.map(([p]) => \`<option value="\${p}">\${p}</option>\`).join('')}
-        </select>
-        <select id="nl-filter-agent" onchange="filterNewLoanTable()"
-          class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-green-400">
-          <option value="">전체 에이전트</option>
-          \${aArr.map(([a]) => \`<option value="\${a}">\${a}</option>\`).join('')}
-        </select>
-      </div>
-    </div>
-    <div class="overflow-auto" style="max-height:420px">
-      <table class="data-table">
-        <thead><tr>
-          <th class="text-left">#</th>
-          <th class="text-left">상품명</th>
-          <th class="text-left">에이전트</th>
-          <th>대출액</th>
-          <th>금리</th>
-          <th>계약일</th>
-          <th>LTV</th>
-          <th>카테고리</th>
-        </tr></thead>
-        <tbody id="nl-tbody">
-          \${recs.map((r,i) => {
-            const cat = getCategoryOfProduct(r.p || '기타');
-            const ltvStr = (r.appraised > 0 && r.loanAmt > 0) ? (r.loanAmt / r.appraised * 100).toFixed(1)+'%' : '-';
-            return \`<tr data-prod="\${(r.p||'').replace(/"/g,'&quot;')}" data-agent="\${(r.a||'').replace(/"/g,'&quot;')}">
-              <td class="text-gray-400">\${i+1}</td>
-              <td class="font-medium">\${r.p||'-'}</td>
-              <td>\${r.a||'-'}</td>
-              <td class="font-semibold">\${(r.amt/10000).toFixed(0)}만</td>
-              <td>\${r.r > 0 ? r.r.toFixed(1)+'%' : '-'}</td>
-              <td class="text-gray-500">\${r.dt||'-'}</td>
-              <td>\${ltvStr}</td>
-              <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
-            </tr>\`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>
 
 </div>\`;
 
@@ -3006,23 +2956,6 @@ function renderNewLoan(el) {
 function selectNewLoanMonth(key) {
   newLoanSelectedKey = key;
   renderNewLoan(document.getElementById('main-content'));
-}
-
-function filterNewLoanTable() {
-  const q      = (document.getElementById('nl-search')?.value || '').trim().toLowerCase();
-  const fProd  = document.getElementById('nl-filter-prod')?.value  || '';
-  const fAgent = document.getElementById('nl-filter-agent')?.value || '';
-  const rows   = document.querySelectorAll('#nl-tbody tr');
-  rows.forEach(tr => {
-    const prod  = tr.dataset.prod  || '';
-    const agent = tr.dataset.agent || '';
-    const text  = (prod + ' ' + agent).toLowerCase();
-    const show  =
-      (!q      || text.includes(q)) &&
-      (!fProd  || prod  === fProd)  &&
-      (!fAgent || agent === fAgent);
-    tr.style.display = show ? '' : 'none';
-  });
 }
 
 // ==================== 페이지: 연체 현황 ====================
