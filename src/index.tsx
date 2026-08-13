@@ -70,6 +70,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
 .badge-purple{background:#ede9fe;color:#7c3aed;}
 .chart-wrap{position:relative;height:220px;}
 .chart-wrap-lg{position:relative;height:280px;}
+.chart-wrap-sm{position:relative;height:200px;}
 .progress-bar{height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;}
 .progress-fill{height:100%;border-radius:4px;transition:width .6s ease;}
 
@@ -2685,7 +2686,31 @@ function renderNewLoan(el) {
   rateBands.forEach(b => {
     const rs = recs.filter(r => r.r > b.min && r.r <= b.max);
     b.count = rs.length; b.amt = rs.reduce((s,r) => s + r.amt, 0);
+
+    // ── 상품 카테고리별 분류
+    b.byCat = {};
+    CATEGORIES.forEach(c => { b.byCat[c.id] = { name:c.name, color:c.color, count:0, amt:0 }; });
+    b.byCat['__none__'] = { name:'미분류', color:'#9ca3af', count:0, amt:0 };
+    rs.forEach(r => {
+      const cat = getCategoryOfProduct(r.p || '');
+      const cm  = b.byCat[cat.id] || b.byCat['__none__'];
+      cm.count++; cm.amt += r.amt;
+    });
+
+    // ── 에이전트 카테고리별 분류
+    b.byAgentCat = {};
+    AGENT_CATEGORIES.forEach(c => { b.byAgentCat[c.id] = { name:c.name, color:c.color, count:0, amt:0 }; });
+    b.byAgentCat['__none__'] = { name:'미분류', color:'#9ca3af', count:0, amt:0 };
+    rs.forEach(r => {
+      const cat = getCategoryOfAgent(r.a || '');
+      const cm  = b.byAgentCat[cat.id] || b.byAgentCat['__none__'];
+      cm.count++; cm.amt += r.amt;
+    });
   });
+
+  // ── 금리구간 분류표용: 사용 상품카테고리·에이전트카테고리 목록 (count>0인 것만)
+  const rateUsedCats      = CATEGORIES.filter(c => rateBands.some(b => b.byCat[c.id]?.count > 0));
+  const rateUsedAgentCats = AGENT_CATEGORIES.filter(c => rateBands.some(b => b.byAgentCat[c.id]?.count > 0));
 
   // ── 월 선택 탭
   const monthTabHtml = keys.length > 1 ? \`
@@ -2922,6 +2947,86 @@ function renderNewLoan(el) {
       }).join('')}
     </div>
     <div class="chart-wrap"><canvas id="nl-rate-bar"></canvas></div>
+
+    <!-- 상품 카테고리별 분류 -->
+    <div class="mt-6">
+      <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-tags mr-1.5 text-blue-400"></i>상품 카테고리별 구분</h4>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <div class="chart-wrap-sm"><canvas id="nl-rate-cat-bar"></canvas></div>
+        </div>
+        <div class="overflow-auto">
+          <table class="data-table">
+            <thead><tr>
+              <th class="text-left">카테고리</th>
+              \${rateBands.map(b => \`<th style="color:\${b.color}">\${b.label}</th>\`).join('')}
+              <th>합계</th>
+            </tr></thead>
+            <tbody>
+              \${rateUsedCats.map(c => {
+                const rowTotal = rateBands.reduce((s,b) => s + (b.byCat[c.id]?.count||0), 0);
+                const rowAmt   = rateBands.reduce((s,b) => s + (b.byCat[c.id]?.amt||0),   0);
+                return \`<tr>
+                  <td><span class="badge" style="background:\${c.color}22;color:\${c.color}">\${c.name}</span></td>
+                  \${rateBands.map(b => {
+                    const d = b.byCat[c.id] || {count:0,amt:0};
+                    return d.count > 0
+                      ? \`<td><b>\${fmtN(d.count)}건</b><br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(d.amt)}</span></td>\`
+                      : \`<td class="text-gray-300">-</td>\`;
+                  }).join('')}
+                  <td class="font-semibold">\${fmtN(rowTotal)}건<br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(rowAmt)}</span></td>
+                </tr>\`;
+              }).join('')}
+              <tr class="font-bold bg-gray-50">
+                <td>합계</td>
+                \${rateBands.map(b => \`<td>\${fmtN(b.count)}건<br><span style="font-size:10px;color:#6b7280">\${fmtAmt(b.amt)}</span></td>\`).join('')}
+                <td>\${fmtN(totalCount)}건</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 에이전트 카테고리별 분류 -->
+    <div class="mt-6">
+      <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-user-tag mr-1.5 text-teal-400"></i>에이전트 카테고리별 구분</h4>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <div class="chart-wrap-sm"><canvas id="nl-rate-agentcat-bar"></canvas></div>
+        </div>
+        <div class="overflow-auto">
+          <table class="data-table">
+            <thead><tr>
+              <th class="text-left">에이전트 카테고리</th>
+              \${rateBands.map(b => \`<th style="color:\${b.color}">\${b.label}</th>\`).join('')}
+              <th>합계</th>
+            </tr></thead>
+            <tbody>
+              \${rateUsedAgentCats.map(c => {
+                const rowTotal = rateBands.reduce((s,b) => s + (b.byAgentCat[c.id]?.count||0), 0);
+                const rowAmt   = rateBands.reduce((s,b) => s + (b.byAgentCat[c.id]?.amt||0),   0);
+                return \`<tr>
+                  <td><span class="badge" style="background:\${c.color}22;color:\${c.color}">\${c.name}</span></td>
+                  \${rateBands.map(b => {
+                    const d = b.byAgentCat[c.id] || {count:0,amt:0};
+                    return d.count > 0
+                      ? \`<td><b>\${fmtN(d.count)}건</b><br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(d.amt)}</span></td>\`
+                      : \`<td class="text-gray-300">-</td>\`;
+                  }).join('')}
+                  <td class="font-semibold">\${fmtN(rowTotal)}건<br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(rowAmt)}</span></td>
+                </tr>\`;
+              }).join('')}
+              <tr class="font-bold bg-gray-50">
+                <td>합계</td>
+                \${rateBands.map(b => \`<td>\${fmtN(b.count)}건<br><span style="font-size:10px;color:#6b7280">\${fmtAmt(b.amt)}</span></td>\`).join('')}
+                <td>\${fmtN(totalCount)}건</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
 
@@ -2950,6 +3055,38 @@ function renderNewLoan(el) {
       y:  { ticks:{ callback:v=>v+'건', font:{size:10} } },
       y1: { type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'억', font:{size:10}} }
     }}});
+
+    // 금리구간 × 상품 카테고리 스택형 막대 (건수)
+    if(rateUsedCats.length > 0) {
+      mkBar('nl-rate-cat-bar', rateBands.map(b=>b.label),
+        rateUsedCats.map(c => ({
+          label: c.name,
+          data:  rateBands.map(b => b.byCat[c.id]?.count || 0),
+          backgroundColor: c.color + 'cc',
+          stack: 'cat'
+        })),
+        { extra:{ scales:{
+          x: { stacked:true },
+          y: { stacked:true, ticks:{ callback:v=>v+'건', font:{size:10} } }
+        }}}
+      );
+    }
+
+    // 금리구간 × 에이전트 카테고리 스택형 막대 (건수)
+    if(rateUsedAgentCats.length > 0) {
+      mkBar('nl-rate-agentcat-bar', rateBands.map(b=>b.label),
+        rateUsedAgentCats.map(c => ({
+          label: c.name,
+          data:  rateBands.map(b => b.byAgentCat[c.id]?.count || 0),
+          backgroundColor: c.color + 'cc',
+          stack: 'agc'
+        })),
+        { extra:{ scales:{
+          x: { stacked:true },
+          y: { stacked:true, ticks:{ callback:v=>v+'건', font:{size:10} } }
+        }}}
+      );
+    }
   }, 50);
 }
 
