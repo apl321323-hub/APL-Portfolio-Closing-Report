@@ -900,9 +900,15 @@ function aggregateByAgent() {
   const map = {};
   for(const r of LOAN.records){
     const a=r.a||'기타';
-    if(!map[a])map[a]={count:0,balance:0,rateWSum:0,rateBalSum:0,overdue30:0,bal30:0};
+    if(!map[a])map[a]={count:0,balance:0,rateWSum:0,rateBalSum:0,overdue30:0,bal30:0,bal10_:0,bal30_:0,bal60:0,bal90:0,balMore:0};
     map[a].count++;map[a].balance+=r.b;
-    if(r.r>0&&r.b>0){map[a].rateWSum+=r.b*r.r;map[a].rateBalSum+=r.b;}  // 잔액가중합
+    if(r.r>0&&r.b>0){map[a].rateWSum+=r.b*r.r;map[a].rateBalSum+=r.b;}
+    if(r.d===0){/* 정상 */}
+    else if(r.d<=10){map[a].bal10_+=r.b;}
+    else if(r.d<=30){map[a].bal30_+=r.b;}
+    else if(r.d<=60){map[a].bal60+=r.b;}
+    else if(r.d<=90){map[a].bal90+=r.b;}
+    else{map[a].balMore+=r.b;}
     if(r.d>30){map[a].overdue30++;map[a].bal30+=r.b;}
   }
   return map;
@@ -2018,18 +2024,40 @@ function renderAgent(el) {
       <div class="chart-wrap-lg"><canvas id="ag-bar"></canvas></div>
     </div>
   </div>
-  <div class="card p-5">
-    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-indigo-500"></i>에이전트별 상세</h3>
+  <div class="card overflow-hidden">
+    <div class="px-5 pt-5 pb-3 border-b border-gray-100">
+      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-table mr-2 text-indigo-500"></i>에이전트별 상세</h3>
+    </div>
     <div class="overflow-auto">
-      <table class="data-table"><thead><tr><th>#</th><th>에이전트</th><th>카테고리</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>30일연체건수</th><th>30일연체율</th></tr></thead>
+      <table class="data-table"><thead><tr>
+        <th>#</th><th>에이전트</th><th>카테고리</th><th class="text-right">건수</th><th class="text-right">잔고</th>
+        <th class="text-right">구성비</th><th class="text-right">평균금리</th>
+        <th class="text-right">10일이상 연체금</th><th class="text-right">10일이상 연체율</th>
+        <th class="text-right">30일초과(%)</th><th class="text-right">90일초과(%)</th>
+      </tr></thead>
       <tbody>\${aArr.map(([a,v],i)=>{
         const cat=getCategoryOfAgent(a);
-        const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';const odR=v.count>0?(v.overdue30/v.count*100).toFixed(1):'0';
-        return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${a}</td>
-        <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
-        <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
-        <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill" style="width:\${pct}%;background:\${cat.color}"></div></div><span>\${pct}%</span></div></td>
-        <td>\${avgR}%</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="\${parseFloat(odR)>=8?'text-red-600 font-bold':parseFloat(odR)>=4?'text-orange-500':'text-green-600'}">\${odR}%</td></tr>\`;}).join('')}
+        const pct=(v.balance/total*100).toFixed(1);
+        const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
+        const b10over=v.bal30_+v.bal60+v.bal90+v.balMore;
+        const b30over=v.bal60+v.bal90+v.balMore;
+        const b90over=v.balMore;
+        const od10r=v.balance>0?(b10over/v.balance*100).toFixed(2):'0.00';
+        const od30r=v.balance>0?(b30over/v.balance*100).toFixed(2):'0.00';
+        const od90r=v.balance>0?(b90over/v.balance*100).toFixed(2):'0.00';
+        return \`<tr>
+          <td class="text-gray-400">\${i+1}</td>
+          <td class="font-medium">\${a}</td>
+          <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
+          <td class="text-right">\${fmtN(v.count)}</td>
+          <td class="text-right font-semibold">\${fmtAmt(v.balance)}</td>
+          <td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:\${pct}%;background:\${cat.color}"></div></div><span>\${pct}%</span></div></td>
+          <td class="text-right">\${avgR}%</td>
+          <td class="text-right \${b10over>0?'text-orange-500 font-semibold':''}">\${b10over>0?fmtAmt(b10over):'-'}</td>
+          <td class="text-right \${parseFloat(od10r)>=8?'text-red-600 font-bold':parseFloat(od10r)>=4?'text-orange-500':'text-green-600'}">\${od10r}%</td>
+          <td class="text-right \${parseFloat(od30r)>=8?'text-red-600 font-bold':parseFloat(od30r)>=4?'text-orange-500':'text-green-600'}">\${od30r}%</td>
+          <td class="text-right \${parseFloat(od90r)>=8?'text-red-600 font-bold':parseFloat(od90r)>=4?'text-orange-500':'text-green-600'}">\${od90r}%</td>
+        </tr>\`;}).join('')}
       </tbody></table>
     </div>
   </div>
