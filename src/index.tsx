@@ -1762,6 +1762,7 @@ function renderOverview(el) {
 function renderBalance(el) {
   const total=LOAN.records.reduce((s,r)=>s+r.b,0);
   const catData=aggregateByCategory().sort((a,b)=>b.balance-a.balance); // 구성비(잔액) 내림차순
+  const catMap=Object.fromEntries(catData.map(c=>[c.id,c])); // id → cat (bal10Over 포함)
   const grpData=aggregateByGroup();
   const pMap=aggregateByProduct();
   el.innerHTML=\`
@@ -1773,22 +1774,88 @@ function renderBalance(el) {
       <i class="fas fa-sliders-h"></i>카테고리 설정
     </button>
   </div>
-  \${grpData.length>0?\`<div class="card p-5">
-    <h3 class="text-sm font-bold text-gray-700 mb-4"><i class="fas fa-layer-group mr-2" style="color:#7c3aed"></i>상위 카테고리(그룹) 구성비</h3>
-    <div class="flex rounded-xl overflow-hidden h-8 mb-4">
-      \${grpData.map(g=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(g.balance/total*100).toFixed(1)}%;background:\${g.color}" title="\${g.name}: \${fmtAmt(g.balance)}">\${(g.balance/total*100)>=6?g.name:''}</div>\`).join('')}
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      \${grpData.map(g=>{const pct=(g.balance/total*100);const avgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
-      return \`<div class="rounded-xl p-3" style="background:\${g.color}12;border:1.5px solid \${g.color}40">
-        <div class="flex items-center gap-1.5 mb-1"><div class="w-2.5 h-2.5 rounded-full" style="background:\${g.color}"></div><span class="text-xs font-bold text-gray-700">\${g.name}</span></div>
-        <p class="text-2xl font-black" style="color:\${g.color}">\${pct.toFixed(1)}%</p>
-        <p class="text-xs text-gray-500 mt-0.5">\${fmtAmt(g.balance)} / \${fmtN(g.count)}건</p>
-        <div class="mt-1 flex gap-3 text-xs text-gray-400"><span>금리 <b class="text-gray-600">\${avgR}%</b></span><span>연체 <b class="\${parseFloat(odR)>=5?'text-red-600':parseFloat(odR)>=3?'text-orange-500':'text-green-600'}">\${odR}%</b></span></div>
-        <div class="mt-1.5 flex flex-wrap gap-1">\${g.cats.map(c=>\`<span class="text-xs px-1.5 py-0.5 rounded-full text-white" style="background:\${c.color}cc">\${c.name}</span>\`).join('')}</div>
-      </div>\`;}).join('')}
-    </div>
-  </div>\`:''}
+
+  \${grpData.length>0?\`
+  <!-- ── 그룹 구분선 바 ── -->
+  <div class="flex rounded-xl overflow-hidden h-8">
+    \${grpData.map(g=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(g.balance/total*100).toFixed(1)}%;background:\${g.color}" title="\${g.name}: \${fmtAmt(g.balance)}">\${(g.balance/total*100)>=6?g.name:''}</div>\`).join('')}
+  </div>
+
+  <!-- ── 그룹별 카드 (담보|신용 나란히) ── -->
+  <div class="grid gap-4" style="grid-template-columns:repeat(\${grpData.length},1fr)">
+    \${grpData.map(g=>{
+      const pct=(g.balance/total*100);
+      const avgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';
+      const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
+      const odRNum=parseFloat(odR);
+      const odColor=odRNum>=5?'text-red-600':odRNum>=3?'text-orange-500':'text-green-600';
+      // 카테고리 미니카드 — 구성비·재액·금리·연체(30일)
+      const catCards=g.cats.map(c=>{
+        const cc=catMap[c.id]||c;
+        const cpct=(cc.balance/total*100);
+        const gpct=g.balance>0?(cc.balance/g.balance*100):0;
+        const cr=cc.rateBalSum>0?(cc.rateWSum/cc.rateBalSum).toFixed(2):'-';
+        const od30r=cc.balance>0?((cc.bal30Over||0)/cc.balance*100).toFixed(1):'0';
+        const od30Num=parseFloat(od30r);
+        const od30Color=od30Num>=5?'text-red-600 font-bold':od30Num>=3?'text-orange-500':'text-green-600';
+        return \`<div class="rounded-xl p-3" style="background:\${cc.color}0f;border:1.5px solid \${cc.color}40">
+          <div class="flex items-center gap-1.5 mb-2">
+            <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:\${cc.color}"></div>
+            <span class="text-xs font-bold text-gray-700">\${cc.name}</span>
+          </div>
+          <div class="flex items-end justify-between mb-1.5">
+            <div>
+              <p class="text-2xl font-black leading-none" style="color:\${cc.color}">\${cpct.toFixed(1)}<span class="text-sm font-bold">%</span></p>
+              <p class="text-xs text-gray-400 mt-0.5">그룹내 \${gpct.toFixed(1)}%</p>
+            </div>
+            <p class="text-sm font-bold text-gray-700">\${fmtAmt(cc.balance)}</p>
+          </div>
+          <div class="w-full rounded-full h-1.5 mb-2" style="background:\${cc.color}20">
+            <div class="h-1.5 rounded-full" style="width:\${Math.min(cpct,100).toFixed(1)}%;background:\${cc.color}"></div>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-400">\${fmtN(cc.count)}건</span>
+            <div class="flex gap-2">
+              <span class="text-gray-500">금리 <b class="text-gray-700">\${cr}%</b></span>
+              <span class="text-gray-500">연체 <b class="\${od30Color}">\${od30r}%</b></span>
+            </div>
+          </div>
+        </div>\`;
+      }).join('');
+      return \`<div class="card p-4" style="border-top:3px solid \${g.color}">
+        <!-- 그룹 요약 + 카테고리 카드: 가로 배치 -->
+        <div class="flex gap-4">
+          <!-- 왼쪽: 그룹 요약 -->
+          <div class="flex-shrink-0" style="min-width:130px">
+            <div class="flex items-center gap-1.5 mb-1">
+              <div class="w-3 h-3 rounded-full" style="background:\${g.color}"></div>
+              <span class="text-sm font-bold text-gray-700">\${g.name}</span>
+            </div>
+            <p class="text-4xl font-black leading-none mb-1" style="color:\${g.color}">\${pct.toFixed(1)}<span class="text-lg font-bold">%</span></p>
+            <p class="text-xs text-gray-500 mb-3">\${fmtAmt(g.balance)}<br>\${fmtN(g.count)}건</p>
+            <div class="space-y-1 text-xs">
+              <div class="flex items-center gap-1.5">
+                <i class="fas fa-percentage text-gray-400" style="width:12px"></i>
+                <span class="text-gray-500">금리</span>
+                <span class="font-bold text-gray-700">\${avgR}%</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <i class="fas fa-exclamation-triangle text-gray-400" style="width:12px"></i>
+                <span class="text-gray-500">연체</span>
+                <span class="font-bold \${odColor}">\${odR}%</span>
+              </div>
+            </div>
+          </div>
+          <!-- 세로 구분선 -->
+          <div class="w-px self-stretch rounded" style="background:\${g.color}30"></div>
+          <!-- 오른쪽: 카테고리 미니카드 -->
+          <div class="flex-1 grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+            \${catCards}
+          </div>
+        </div>
+      </div>\`;
+    }).join('')}
+  </div>\`:''}\n\n  <!-- ── 카테고리(하위) 상세 테이블 ── -->
   <div>
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
