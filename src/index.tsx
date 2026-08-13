@@ -597,8 +597,12 @@ function augmentTrendFromStorage() {
     if (!loanData || !loanData.records) continue;
     const recs = loanData.records;
 
-    // ── loan_data가 있으면 항상 CATEGORIES/GROUPS 기준으로 집계 → 월별 맵 갱신 ──
-    // (data.json에 이미 있는 월이라도 덮어씀)
+    // ── contract 데이터 판별: r.b(잔고) 합계가 0이면 신규계약 파일 → 잔고 집계 불가 ──
+    const totalBalCheck = recs.reduce((s,r)=>s+(r.b||0),0);
+    const isContractData = (totalBalCheck === 0);
+
+    // ── loan_data(잔고 데이터)가 있으면 CATEGORIES/GROUPS 기준으로 집계 → 월별 맵 갱신 ──
+    // (data.json에 이미 있는 월이라도 덮어씀. contract 데이터는 잔고 없으므로 스킵)
     const _creditBal = 0, _collBal = 0;
     // 그룹 잔고 집계 (신용/담보 분리 차트용)
     let _gCreditBal = 0, _gCollBal = 0;
