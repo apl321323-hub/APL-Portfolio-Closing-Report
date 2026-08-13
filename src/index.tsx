@@ -565,16 +565,26 @@ function augmentTrendFromStorage() {
   const keys = Object.keys(db).sort(); // 오름차순
   if (keys.length === 0) return;
 
-  // ── 담보 상품 목록 (CATEGORIES c1 기준) ──────────────
-  // CATEGORIES가 로드된 경우 c1(담보상품)의 products 사용, 아니면 기본값
-  const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : [
-    { id:'c1', name:'담보상품', products:['담보론','담보론(지분대출)'] },
-  ];
-  const collProductNames = (catsNow.find(c=>c.id==='c1') || {products:['담보론','담보론(지분대출)']}).products;
+  // ── 담보/신용 상품 목록 (CATEGORIES + GROUPS 기준 — 잔고구성비와 동일) ──
+  const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
+  const grpsNow = (GROUPS && GROUPS.length > 0) ? GROUPS : DEFAULT_GROUPS;
 
-  // ── data.json에 없는 외부 분류명: loan_data로 집계 불가 → 0 처리 ─
-  // '신용' = loan_data에서 담보 제외 전체 합산 (특별처리)
-  // '첨담보','차량','회생','신용(기타)' = 외부 시스템 분류 → 0
+  // g1(담보) 그룹의 카테고리 IDs → 상품 목록 확정
+  const g1 = grpsNow.find(g=>g.id==='g1') || {categoryIds:['c1']};
+  const g2 = grpsNow.find(g=>g.id==='g2') || {categoryIds:['c2','c3','c4','c5']};
+
+  const collProductNames   = catsNow.filter(c=>g1.categoryIds.includes(c.id)).flatMap(c=>c.products||[]);
+  const creditProductNames = catsNow.filter(c=>g2.categoryIds.includes(c.id)).flatMap(c=>c.products||[]);
+
+  // fallback (CATEGORIES 미로드 시)
+  const collProds   = collProductNames.length   ? collProductNames   : ['담보론','담보론(지분대출)'];
+  const creditProds = creditProductNames.length  ? creditProductNames
+    : ['N론','N론(하이브리드)','토마토N론','오투N론','기타N',
+       '스타론','스타스위치론','큐브론',
+       '토마토토탈론','토마토토탈론플러스','토마토론',
+       'OP론','오투론','테일론','프리미엄론'];
+
+  // ── data.json에 없는 외부 분류명 → 0 처리 ─────────────────
   const ZERO_NAMES = new Set(['첨담보','차량','신용(기타)']);
 
   for (const yyyymm of keys) {
@@ -623,11 +633,11 @@ function augmentTrendFromStorage() {
       if (r.d>30) byProd[r.p].od30+=r.b||0;
     }
 
-    // ── '신용' 합산 집계 (담보 제외 전체) ───────────────
-    // data.json의 '신용'은 담보 상품군을 제외한 전체 신용 대출 합산값
+    // ── '신용' 합산 집계 (GROUPS g2 기준 — 잔고구성비와 동일) ────────
+    // g2(신용) categoryIds에 속하는 상품들만 합산 (c6 기타/회생 제외)
     const creditAgg = {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
     for (const r of recs) {
-      if (collProductNames.includes(r.p)) continue; // 담보 제외
+      if (!creditProds.includes(r.p)) continue; // g2 신용 상품만
       creditAgg.bal  += r.b||0;
       creditAgg.cnt++;
       if (r.ct==='신규') { creditAgg.newBal+=r.b||0; creditAgg.newCnt++; }
@@ -635,12 +645,24 @@ function augmentTrendFromStorage() {
       if (r.d>30) creditAgg.od30+=r.b||0;
     }
 
+    // ── '담보' 합산 집계 (GROUPS g1 기준 — 잔고구성비와 동일) ────────
+    // g1(담보) categoryIds에 속하는 상품들만 합산
+    const collAgg = {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
+    for (const r of recs) {
+      if (!collProds.includes(r.p)) continue; // g1 담보 상품만
+      collAgg.bal  += r.b||0;
+      collAgg.cnt++;
+      if (r.ct==='신규') { collAgg.newBal+=r.b||0; collAgg.newCnt++; }
+      if (r.d>10) collAgg.od10+=r.b||0;
+      if (r.d>30) collAgg.od30+=r.b||0;
+    }
+
     // ── TREND.products append ────────────────────────
     if (!TREND.products) TREND.products = [];
     for (const tp of TREND.products) {
       let v;
       if (tp.name === '신용') {
-        // 담보 제외 전체 합산
+        // g2(신용) 상품만 합산 — 잔고구성비와 동일 기준
         v = creditAgg;
       } else if (ZERO_NAMES.has(tp.name)) {
         // 외부 시스템 전용 분류 → loan_data로 집계 불가, 0 처리
@@ -649,10 +671,9 @@ function augmentTrendFromStorage() {
         // loan_data 상품명과 직접 1:1 매핑 (없으면 0)
         v = byProd[tp.name] || {bal:0,cnt:0,newBal:0,newCnt:0,od10:0,od30:0};
       }
-      const vBal = tp.name === '신용' ? v.bal : v.bal; // 동일, 명시적으로
       tp.balance.push({
         month:label, count:v.cnt,
-        amount:parseFloat((vBal/100000000).toFixed(2)), rate:avgRate
+        amount:parseFloat((v.bal/100000000).toFixed(2)), rate:avgRate
       });
       tp.new_loans.push({
         month:label, request:0, approve:v.newCnt, approve_rate:0,
@@ -667,7 +688,15 @@ function augmentTrendFromStorage() {
         rate_30: totalBal>0 ? parseFloat((v.od30/totalBal*100).toFixed(2)) : 0,
       });
     }
-    console.log('[TREND 보완] ' + label + ' 추가 완료 (잔고 ' + (totalBal/100000000).toFixed(0) + '억, ' + totalCnt + '건)');
+
+    // ── __collateral__ product: g1 담보 집계 저장 (추이 차트 전용) ────
+    // TREND.products에 없는 특수 product로 g1 합산값 보관
+    if (!TREND.__collateralByMonth) TREND.__collateralByMonth = {};
+    TREND.__collateralByMonth[label] = parseFloat((collAgg.bal/100000000).toFixed(2));
+    if (!TREND.__creditByMonth) TREND.__creditByMonth = {};
+    TREND.__creditByMonth[label] = parseFloat((creditAgg.bal/100000000).toFixed(2));
+
+    console.log('[TREND 보완] ' + label + ' 추가 완료 (잔고 ' + (totalBal/100000000).toFixed(0) + '억, 담보 ' + (collAgg.bal/100000000).toFixed(0) + '억, 신용 ' + (creditAgg.bal/100000000).toFixed(0) + '억, ' + totalCnt + '건)');
   }
 }
 
@@ -1624,16 +1653,35 @@ function renderOverview(el) {
         const tProds   = TREND.products || [];
         const tTotal   = TREND.total;
 
-        // ★ 올바른 신용/담보 분리 (잔고 구성비와 동일한 기준)
-        // data.json의 '신용' product = 담보 제외 전체 신용 합산값
-        // 담보 = total.balance - 신용  (data.json에 담보론 product 항목 없음)
-        const pCredit  = tProds.find(p=>p.name==='신용');
+        // ★ 신용/담보 분리 — 잔고구성비(GROUPS g1/g2)와 동일한 기준
+        // g1(담보) = c1 상품들의 balance 합산
+        // g2(신용) = c2~c5 상품들의 balance 합산
+        // augment된 월은 creditAgg(g2 기준)가 '신용' product에 저장됨
+        // data.json 원본 월은 '신용' product가 외부 집계값이므로 total - 담보(각 상품 합산)로 계산
+        const grpsNow2 = (GROUPS && GROUPS.length > 0) ? GROUPS : DEFAULT_GROUPS;
+        const catsNow2 = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
+        const g1now = grpsNow2.find(g=>g.id==='g1') || {categoryIds:['c1']};
+        const g2now = grpsNow2.find(g=>g.id==='g2') || {categoryIds:['c2','c3','c4','c5']};
+        const collProdNames2   = catsNow2.filter(c=>g1now.categoryIds.includes(c.id)).flatMap(c=>c.products||[]);
+        const creditProdNames2 = catsNow2.filter(c=>g2now.categoryIds.includes(c.id)).flatMap(c=>c.products||[]);
+
+        // data.json 원본 months: 각 상품 balance 합산으로 g1/g2 계산
+        // augment months('신용' product가 g2 기준): 동일하게 합산
         const creditBal = months26.map((_,mi)=>{
-          return pCredit ? (pCredit.balance[jan26i+mi]?.amount||0) : 0;
+          const absIdx = jan26i + mi;
+          // g2 상품들의 balance 합산
+          return creditProdNames2.reduce((s,pn)=>{
+            const tp = tProds.find(x=>x.name===pn);
+            return s + (tp ? (tp.balance[absIdx]?.amount||0) : 0);
+          }, 0);
         });
         const collBal = months26.map((_,mi)=>{
-          const tot = tTotal.balance[jan26i+mi]?.amount||0;
-          return tot - creditBal[mi];
+          const absIdx = jan26i + mi;
+          // g1 상품들의 balance 합산
+          return collProdNames2.reduce((s,pn)=>{
+            const tp = tProds.find(x=>x.name===pn);
+            return s + (tp ? (tp.balance[absIdx]?.amount||0) : 0);
+          }, 0);
         });
 
         mkLine('ov-bal-grp', months26,[
