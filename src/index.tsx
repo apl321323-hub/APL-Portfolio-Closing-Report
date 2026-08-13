@@ -1013,6 +1013,52 @@ function aggregateByAgentGroup() {
     .sort((a,b)=>(a.order||99)-(b.order||99));
 }
 
+/**
+ * 상품 카테고리(담보/신용 등)별 에이전트 집계
+ * 반환: [ { id, name, color, order, totalBalance, totalCount, agents: [{name, balance, count, rate, od10r}] } ]
+ * agents는 잔고 내림차순 정렬
+ */
+function aggregateByProductCatForAgent() {
+  // 상품 카테고리 목록 (order 정렬)
+  const sortedCats = [...CATEGORIES].sort((a,b)=>(a.order||99)-(b.order||99));
+  const catMap = {};
+  for(const c of sortedCats){
+    catMap[c.id] = {
+      id: c.id, name: c.name, color: c.color, order: c.order||99,
+      totalBalance: 0, totalCount: 0,
+      agents: {}  // aname -> {name,balance,count,rateWSum,rateBalSum,bal10Over}
+    };
+  }
+  // 미분류
+  catMap['__none__'] = {
+    id:'__none__', name:'미분류', color:'#9ca3af', order:9999,
+    totalBalance: 0, totalCount: 0, agents: {}
+  };
+
+  for(const r of LOAN.records){
+    const aname = r.a || '기타';
+    const pcat  = getCategoryOfProduct(r.p);
+    const cm    = catMap[pcat.id] || catMap['__none__'];
+    cm.totalBalance += r.b;
+    cm.totalCount++;
+    if(!cm.agents[aname]) cm.agents[aname] = {name:aname,balance:0,count:0,rateWSum:0,rateBalSum:0,bal10Over:0};
+    const am = cm.agents[aname];
+    am.balance += r.b;
+    am.count++;
+    if(r.r>0&&r.b>0){ am.rateWSum+=r.b*r.r; am.rateBalSum+=r.b; }
+    if(r.d>10) am.bal10Over+=r.b;
+  }
+
+  // agents 객체 → 잔고 내림차순 배열로 변환
+  const result = [];
+  for(const [,cm] of Object.entries(catMap)){
+    if(cm.totalCount===0) continue;
+    const agArr = Object.values(cm.agents).sort((a,b)=>b.balance-a.balance);
+    result.push({ ...cm, agents: agArr });
+  }
+  return result.sort((a,b)=>a.order-b.order);
+}
+
 // ==================== 차트 ====================
 function mkPie(id,labels,data,colors){const ctx=document.getElementById(id);if(!ctx)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:'#fff',hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){const v=ctx.raw;const total=ctx.dataset.data.reduce((a,b)=>a+b,0);return' '+labels[ctx.dataIndex]+': '+fmtAmt(v)+' ('+(v/total*100).toFixed(1)+'%)';}}}}}});}
 function mkBar(id,labels,datasets,opts={}){const ctx=document.getElementById(id);if(!ctx)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{font:{size:11},boxWidth:12}}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{callback:v=>opts.pct?v.toFixed(1)+'%':fmtAmt(v),font:{size:10}}}},...opts.extra}});}
@@ -2317,6 +2363,8 @@ function renderAgent(el) {
   const aMap=aggregateByAgent();
   const aArr=Object.entries(aMap).sort((a,b)=>b[1].balance-a[1].balance);
   const agGrpData=aggregateByAgentGroup();
+  // ── 상품 카테고리별 에이전트 집계 (새 카드 섹션용)
+  const prodCatData=aggregateByProductCatForAgent();
 
   // 에이전트 카테고리 기준 집계 (파이차트용)
   const catBal={};
@@ -2336,17 +2384,12 @@ function renderAgent(el) {
     \${agGrpData.map(c=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(c.balance/total*100).toFixed(1)}%;background:\${c.color}" title="\${c.name}: \${fmtAmt(c.balance)}">\${(c.balance/total*100)>=6?c.name:''}</div>\`).join('')}
   </div>
 
-  <!-- ── 에이전트 카테고리별 카드 (카드 안: 개별 에이전트) ── -->
-  <div class="grid gap-3" style="grid-template-columns:repeat(\${Math.min(agGrpData.length,3)},1fr)">
-    \${agGrpData.map(c=>{
-      const cpct=(c.balance/total*100);
-      const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
-      const od10r=c.balance>0?(c.bal10Over/c.balance*100).toFixed(1):'0';
-      const od10Num=parseFloat(od10r);
-      const odColor=od10Num>=8?'color:#dc2626':od10Num>=4?'color:#f97316':'color:#16a34a';
-      // 카테고리 내 에이전트 행 (잔고 내림차순)
-      const agentRows=Object.values(c.agents).sort((a,b)=>b.balance-a.balance).map(ag=>{
-        const apct=c.balance>0?(ag.balance/c.balance*100):0;
+  <!-- ── 상품 카테고리별 카드 (카드 안: 에이전트명 잔고 내림차순) ── -->
+  <div class="grid gap-3" style="grid-template-columns:repeat(\${Math.min(prodCatData.length,3)},1fr)">
+    \${prodCatData.map(c=>{
+      const cpct=total>0?(c.totalBalance/total*100):0;
+      const agentRows=c.agents.map(ag=>{
+        const apct=c.totalBalance>0?(ag.balance/c.totalBalance*100):0;
         const totpct=total>0?(ag.balance/total*100):0;
         const ar=ag.rateBalSum>0?(ag.rateWSum/ag.rateBalSum).toFixed(2):'-';
         const aod10r=ag.balance>0?((ag.bal10Over||0)/ag.balance*100).toFixed(1):'0';
@@ -2376,7 +2419,7 @@ function renderAgent(el) {
         </tr>\`;
       }).join('');
       return \`<div class="card" style="border-top:3px solid \${c.color};overflow:hidden">
-        <!-- 카테고리 헤더 -->
+        <!-- 상품 카테고리 헤더 -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${c.color}08">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="width:10px;height:10px;border-radius:50%;background:\${c.color}"></div>
@@ -2384,12 +2427,10 @@ function renderAgent(el) {
             <span style="font-size:22px;font-weight:900;line-height:1;color:\${c.color}">\${cpct.toFixed(1)}%</span>
           </div>
           <div style="display:flex;gap:10px;font-size:11px;color:#6b7280">
-            <span>\${fmtAmt(c.balance)} / \${fmtN(c.count)}건</span>
-            <span>금리 <b style="color:#374151">\${avgR}%</b></span>
-            <span>연체 <b style="\${odColor}">\${od10r}%</b></span>
+            <span>\${fmtAmt(c.totalBalance)} / \${fmtN(c.totalCount)}건</span>
           </div>
         </div>
-        <!-- 에이전트 리스트 -->
+        <!-- 에이전트 리스트 (잔고 내림차순) -->
         <table style="width:100%;border-collapse:collapse">
           <tbody>\${agentRows}</tbody>
         </table>
