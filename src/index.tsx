@@ -959,9 +959,10 @@ function aggregateByGroup() {
 
 // ==================== 에이전트 그룹 집계 ====================
 function aggregateByAgentGroup() {
-  // 에이전트 카테고리별 집계 (카드 단위)
+  // 에이전트 카테고리별 집계 (카드 단위) — 시스템설정 order 기준 정렬
+  const sortedAgentCats = [...AGENT_CATEGORIES].sort((a,b)=>(a.order||99)-(b.order||99));
   const catMap={};
-  for(const c of AGENT_CATEGORIES){
+  for(const c of sortedAgentCats){
     catMap[c.id]={...c,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0,agents:{},grpBal:{}};
   }
   catMap['__none__']={id:'__none__',name:'미분류',color:'#9ca3af',order:999,count:0,balance:0,rateWSum:0,rateBalSum:0,bal10Over:0,agents:{},grpBal:{}};
@@ -1004,6 +1005,7 @@ function aggregateByAgentGroup() {
     if(r.r>0&&r.b>0){am.rateWSum+=r.b*r.r;am.rateBalSum+=r.b;}
     if(r.d>10){am.bal10Over+=r.b;}
   }
+  // order 기준 정렬 (설정 순서 반영)
   return Object.values(catMap)
     .filter(c=>c.count>0)
     .sort((a,b)=>(a.order||99)-(b.order||99));
@@ -2040,11 +2042,21 @@ function renderProduct(el) {
 function buildAgentGroupBalanceCards(agGrpData, total) {
   if (!agGrpData || agGrpData.length === 0) return '';
 
-  const cards = agGrpData.map(function(cat) {
-    // 담보(g1) → 신용(g2) 순 정렬
+  // 시스템설정 order 기준 정렬 (안전 보장)
+  const sortedCats = [...agGrpData].sort(function(a, b) {
+    return (a.order || 99) - (b.order || 99);
+  });
+
+  // 상품 카테고리 order 맵 (설정 순서 기준)
+  const catOrderMap = {};
+  CATEGORIES.forEach(function(c, i) { catOrderMap[c.id] = c.order != null ? c.order : i + 1; });
+
+  const cards = sortedCats.map(function(cat) {
+    // 상품 그룹(담보/신용): GROUPS의 순서 기준
+    const grpOrder = {};
+    GROUPS.forEach(function(g, i) { grpOrder[g.id] = i; });
     const grpEntries = Object.values(cat.grpBal).sort(function(a, b) {
-      const order = {g1:0, g2:1};
-      return (order[a.id] !== undefined ? order[a.id] : 9) - (order[b.id] !== undefined ? order[b.id] : 9);
+      return (grpOrder[a.id] !== undefined ? grpOrder[a.id] : 9) - (grpOrder[b.id] !== undefined ? grpOrder[b.id] : 9);
     });
     if (grpEntries.length === 0) return '';
 
@@ -2060,8 +2072,10 @@ function buildAgentGroupBalanceCards(agGrpData, total) {
       const gAvgLtv  = (g.id === 'g1' && g.ltvAppSum > 0) ? (g.ltvWSum / g.ltvAppSum * 100).toFixed(1) : null;
       const borderRight = gi < grpEntries.length - 1 ? '1px solid #e5e7eb' : 'none';
 
-      // 카테고리 행 생성
-      const catRowsHtml = Object.values(g.cats).sort(function(a,b){ return b.balance - a.balance; }).map(function(c) {
+      // 카테고리 행: 설정 order 기준 정렬
+      const catRowsHtml = Object.values(g.cats).sort(function(a, b) {
+        return (catOrderMap[a.id] || 99) - (catOrderMap[b.id] || 99);
+      }).map(function(c) {
         const cPct    = total > 0 ? (c.balance / total * 100) : 0;
         const cGpct   = g.balance > 0 ? (c.balance / g.balance * 100) : 0;
         const cAvgR   = c.rateBalSum > 0 ? (c.rateWSum / c.rateBalSum).toFixed(2) : '-';
