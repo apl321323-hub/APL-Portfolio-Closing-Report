@@ -2044,16 +2044,57 @@ function renderProduct(el) {
 function buildAgentGroupBalanceCards(agGrpData, total) {
   if (!agGrpData || agGrpData.length === 0) return '';
 
-  // 시스템설정 order 기준 정렬 (안전 보장)
+  // 전체 데이터 캐시 (필터 갱신용)
+  _agGrpDataCache  = agGrpData;
+  _agGrpTotalCache = total;
+
+  // 필터 버튼 HTML
+  const sortedAgCats = [...AGENT_CATEGORIES].sort(function(a,b){ return (a.order||99)-(b.order||99); });
+  const filterBtns = '<button onclick="agGrpFilterToggle(&apos;__all__&apos;)" id="ag-grp-filter-__all__"'
+    + ' style="padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid #4f46e5;background:#4f46e5;color:#fff;cursor:pointer;transition:all .15s">전체</button>'
+    + sortedAgCats.map(function(c) {
+      return '<button onclick="agGrpFilterToggle(&apos;' + c.id + '&apos;)" id="ag-grp-filter-' + c.id + '"'
+        + ' style="padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid ' + c.color + '88;background:#fff;color:' + c.color + ';cursor:pointer;transition:all .15s">'
+        + c.name + '</button>';
+    }).join('');
+
+  // 카드 HTML
+  const cardsHtml = _buildBalanceCardItems(agGrpData, total);
+
+  return '<div class="space-y-3">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+      + '<h3 class="text-sm font-bold text-gray-700"><i class="fas fa-layer-group mr-2 text-indigo-500"></i>카테고리별 잔고구성비 (담보·신용 구조)</h3>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+        + '<span style="font-size:11px;color:#9ca3af">카테고리 필터:</span>'
+        + filterBtns
+      + '</div>'
+    + '</div>'
+    + '<div id="ag-grp-cards">' + cardsHtml + '</div>'
+    + '</div>';
+}
+
+// 카드 아이템만 렌더링 (필터 적용)
+function _buildBalanceCardItems(agGrpData, total) {
+  // 시스템설정 order 기준 정렬
   const sortedCats = [...agGrpData].sort(function(a, b) {
     return (a.order || 99) - (b.order || 99);
   });
+
+  // 필터 적용
+  const filtered = sortedCats.filter(function(cat) {
+    if (_agCatFilter.size === 0) return true;
+    return _agCatFilter.has(cat.id);
+  });
+
+  if (filtered.length === 0) {
+    return '<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;background:#fff;border-radius:12px;border:1px solid #e5e7eb">선택한 카테고리에 해당하는 데이터가 없습니다</div>';
+  }
 
   // 상품 카테고리 order 맵 (설정 순서 기준)
   const catOrderMap = {};
   CATEGORIES.forEach(function(c, i) { catOrderMap[c.id] = c.order != null ? c.order : i + 1; });
 
-  const cards = sortedCats.map(function(cat) {
+  const cards = filtered.map(function(cat) {
     // 상품 그룹(담보/신용): GROUPS의 순서 기준
     const grpOrder = {};
     GROUPS.forEach(function(g, i) { grpOrder[g.id] = i; });
@@ -2127,16 +2168,55 @@ function buildAgentGroupBalanceCards(agGrpData, total) {
       + '</div>';
   }).join('');
 
-  return '<div class="space-y-3">'
-    + '<h3 class="text-sm font-bold text-gray-700"><i class="fas fa-layer-group mr-2 text-indigo-500"></i>카테고리별 잔고구성비 (담보·신용 구조)</h3>'
-    + cards
-    + '</div>';
+  return cards;
+}
+
+// 잔고구성비 필터 토글
+function agGrpFilterToggle(catId) {
+  if (catId === '__all__') {
+    _agCatFilter.clear();
+  } else {
+    if (_agCatFilter.has(catId)) {
+      _agCatFilter.delete(catId);
+    } else {
+      _agCatFilter.add(catId);
+    }
+  }
+  // 버튼 스타일 갱신 (에이전트 상세 테이블 버튼 + 잔고구성비 버튼 동시)
+  _agCatFilterRefreshButtons();
+  _agGrpFilterRefreshButtons();
+  // 잔고구성비 카드 영역 갱신
+  const grpCards = document.getElementById('ag-grp-cards');
+  if (grpCards) grpCards.innerHTML = _buildBalanceCardItems(_agGrpDataCache, _agGrpTotalCache);
+  // 에이전트 상세 테이블 tbody 갱신
+  const tbody = document.getElementById('ag-detail-tbody');
+  if (tbody) tbody.innerHTML = renderAgDetailRows(_agDetailArr, _agDetailTotal);
+}
+
+function _agGrpFilterRefreshButtons() {
+  const allBtn = document.getElementById('ag-grp-filter-__all__');
+  if (allBtn) {
+    const isAll = _agCatFilter.size === 0;
+    allBtn.style.background  = isAll ? '#4f46e5' : '#fff';
+    allBtn.style.color       = isAll ? '#fff'    : '#4f46e5';
+    allBtn.style.borderColor = isAll ? '#4f46e5' : '#c7d2fe';
+  }
+  AGENT_CATEGORIES.forEach(function(c) {
+    const btn = document.getElementById('ag-grp-filter-' + c.id);
+    if (!btn) return;
+    const active = _agCatFilter.has(c.id);
+    btn.style.background  = active ? c.color : '#fff';
+    btn.style.color       = active ? '#fff'  : c.color;
+    btn.style.borderColor = active ? c.color : c.color + '88';
+  });
 }
 
 // ==================== 에이전트 상세 테이블 필터 ====================
 let _agDetailArr = [];   // 현재 aArr 캐시 (필터 갱신용)
 let _agDetailTotal = 0;  // 현재 total 캐시
 let _agCatFilter = new Set(); // 선택된 카테고리 id 집합 (빈 Set = 전체)
+let _agGrpDataCache  = []; // 잔고구성비 카드 데이터 캐시
+let _agGrpTotalCache = 0;  // 잔고구성비 total 캐시
 
 function renderAgDetailRows(aArr, total) {
   // 캐시 갱신
@@ -2191,21 +2271,23 @@ function renderAgDetailRows(aArr, total) {
 
 function agCatFilterToggle(catId) {
   if (catId === '__all__') {
-    // 전체 버튼: 필터 초기화
     _agCatFilter.clear();
   } else {
-    // 해당 카테고리 토글
     if (_agCatFilter.has(catId)) {
       _agCatFilter.delete(catId);
     } else {
       _agCatFilter.add(catId);
     }
   }
-  // 버튼 스타일 갱신
+  // 버튼 스타일 갱신 (두 필터 버튼 세트 동시)
   _agCatFilterRefreshButtons();
-  // 테이블 tbody만 갱신
+  _agGrpFilterRefreshButtons();
+  // 테이블 tbody 갱신
   const tbody = document.getElementById('ag-detail-tbody');
   if (tbody) tbody.innerHTML = renderAgDetailRows(_agDetailArr, _agDetailTotal);
+  // 잔고구성비 카드 영역 갱신
+  const grpCards = document.getElementById('ag-grp-cards');
+  if (grpCards) grpCards.innerHTML = _buildBalanceCardItems(_agGrpDataCache, _agGrpTotalCache);
 }
 
 function _agCatFilterRefreshButtons() {
