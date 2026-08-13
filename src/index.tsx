@@ -1879,7 +1879,8 @@ function renderBalance(el) {
         <th class="text-right">구성비</th>
         <th class="text-right">평균금리</th>
         <th class="text-right">평균LTV</th>
-        <th class="text-right">10일초과 연체율</th>
+        <th class="text-right">10일이상 연체금</th>
+        <th class="text-right">10일이상 연체율</th>
         <th class="text-right">30일초과 연체율</th>
         <th class="text-right">90일초과 연체율</th>
       </tr></thead>
@@ -1902,6 +1903,7 @@ function renderBalance(el) {
           <td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
           <td class="text-right">\${avgR2}%</td>
           <td class="text-right">\${avgLtv2!=='-'?avgLtv2+'%':'-'}</td>
+          <td class="text-right \${b10over>0?'text-orange-500 font-semibold':''}">\${b10over>0?fmtAmt(b10over):'-'}</td>
           <td class="text-right \${parseFloat(od10r2)>=8?'text-red-600 font-bold':parseFloat(od10r2)>=4?'text-orange-500':'text-green-600'}">
             \${od10r2}%</td>
           <td class="text-right \${parseFloat(od30r2)>=8?'text-red-600 font-bold':parseFloat(od30r2)>=4?'text-orange-500':'text-green-600'}">
