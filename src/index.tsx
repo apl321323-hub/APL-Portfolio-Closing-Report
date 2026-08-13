@@ -1841,7 +1841,13 @@ function renderBalance(el) {
         </table>
       </div>\`;
     }).join('')}
-  </div>\`:''}\n\n  <!-- ── 카테고리(하위) 상세 테이블 ── -->
+  </div>\`:''}\n\n  <!-- ── 상품별 잔고 현황 바 차트 ── -->
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2" style="color:#6366f1"></i>상품별 잔고 현황</h3>
+    <div class="chart-wrap-lg"><canvas id="bal-prod-bar"></canvas></div>
+  </div>
+
+  <!-- ── 카테고리(하위) 상세 테이블 ── -->
   <div>
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
@@ -1881,11 +1887,6 @@ function renderBalance(el) {
       }).join('')}
       </tbody>
     </table>
-  </div>
-  <!-- ── 상품별 잔고 현황 바 차트 ── -->
-  <div class="card p-5">
-    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2" style="color:#6366f1"></i>상품별 잔고 현황</h3>
-    <div class="chart-wrap-lg"><canvas id="bal-prod-bar"></canvas></div>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
