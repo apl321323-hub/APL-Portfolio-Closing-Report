@@ -1781,81 +1781,67 @@ function renderBalance(el) {
     \${grpData.map(g=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(g.balance/total*100).toFixed(1)}%;background:\${g.color}" title="\${g.name}: \${fmtAmt(g.balance)}">\${(g.balance/total*100)>=6?g.name:''}</div>\`).join('')}
   </div>
 
-  <!-- ── 그룹별 카드 (담보|신용 나란히) ── -->
-  <div class="grid gap-4" style="grid-template-columns:repeat(\${grpData.length},1fr)">
+  <!-- ── 그룹별 카드 (담보|신용 나란히 — 1카드 리스트) ── -->
+  <div class="grid gap-3" style="grid-template-columns:repeat(\${grpData.length},1fr)">
     \${grpData.map(g=>{
       const pct=(g.balance/total*100);
       const avgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';
       const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
       const odRNum=parseFloat(odR);
-      const odColor=odRNum>=5?'text-red-600':odRNum>=3?'text-orange-500':'text-green-600';
-      // 카테고리 미니카드 — 구성비·재액·금리·연체(30일)
-      const catCards=g.cats.map(c=>{
+      const odColor=odRNum>=5?'color:#dc2626':odRNum>=3?'color:#f97316':'color:#16a34a';
+      // 카테고리 로우 항목
+      const catRows=g.cats.map(c=>{
         const cc=catMap[c.id]||c;
         const cpct=(cc.balance/total*100);
         const gpct=g.balance>0?(cc.balance/g.balance*100):0;
         const cr=cc.rateBalSum>0?(cc.rateWSum/cc.rateBalSum).toFixed(2):'-';
         const od30r=cc.balance>0?((cc.bal30Over||0)/cc.balance*100).toFixed(1):'0';
         const od30Num=parseFloat(od30r);
-        const od30Color=od30Num>=5?'text-red-600 font-bold':od30Num>=3?'text-orange-500':'text-green-600';
-        return \`<div class="rounded-xl p-3" style="background:\${cc.color}0f;border:1.5px solid \${cc.color}40">
-          <div class="flex items-center gap-1.5 mb-2">
-            <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:\${cc.color}"></div>
-            <span class="text-xs font-bold text-gray-700">\${cc.name}</span>
-          </div>
-          <div class="flex items-end justify-between mb-1.5">
-            <div>
-              <p class="text-2xl font-black leading-none" style="color:\${cc.color}">\${cpct.toFixed(1)}<span class="text-sm font-bold">%</span></p>
-              <p class="text-xs text-gray-400 mt-0.5">그룹내 \${gpct.toFixed(1)}%</p>
-            </div>
-            <p class="text-sm font-bold text-gray-700">\${fmtAmt(cc.balance)}</p>
-          </div>
-          <div class="w-full rounded-full h-1.5 mb-2" style="background:\${cc.color}20">
-            <div class="h-1.5 rounded-full" style="width:\${Math.min(cpct,100).toFixed(1)}%;background:\${cc.color}"></div>
-          </div>
-          <div class="flex justify-between text-xs">
-            <span class="text-gray-400">\${fmtN(cc.count)}건</span>
-            <div class="flex gap-2">
-              <span class="text-gray-500">금리 <b class="text-gray-700">\${cr}%</b></span>
-              <span class="text-gray-500">연체 <b class="\${od30Color}">\${od30r}%</b></span>
-            </div>
-          </div>
-        </div>\`;
+        const od30Style=od30Num>=5?'color:#dc2626;font-weight:700':od30Num>=3?'color:#f97316':'color:#16a34a';
+        return \`<tr style="border-top:1px solid #f3f4f6">
+          <td style="padding:6px 8px;width:10px">
+            <div style="width:8px;height:8px;border-radius:50%;background:\${cc.color};flex-shrink:0"></div>
+          </td>
+          <td style="padding:6px 4px;white-space:nowrap">
+            <span style="font-size:12px;font-weight:700;color:#374151">\${cc.name}</span>
+          </td>
+          <td style="padding:6px 4px;text-align:right">
+            <span style="font-size:13px;font-weight:900;color:\${cc.color}">\${cpct.toFixed(1)}%</span>
+            <div style="font-size:10px;color:#9ca3af">그룹내 \${gpct.toFixed(1)}%</div>
+          </td>
+          <td style="padding:6px 4px;text-align:right">
+            <span style="font-size:12px;font-weight:600;color:#1f2937">\${fmtAmt(cc.balance)}</span>
+            <div style="font-size:10px;color:#9ca3af">\${fmtN(cc.count)}건</div>
+          </td>
+          <td style="padding:6px 4px;text-align:right">
+            <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${cr}%</b></span>
+          </td>
+          <td style="padding:6px 8px;text-align:right">
+            <span style="font-size:11px;\${od30Style}">연체 \${od30r}%</span>
+          </td>
+        </tr>\`;
       }).join('');
-      return \`<div class="card p-4" style="border-top:3px solid \${g.color}">
-        <!-- 그룹 요약 + 카테고리 카드: 가로 배치 -->
-        <div class="flex gap-4">
-          <!-- 왼쪽: 그룹 요약 -->
-          <div class="flex-shrink-0" style="min-width:130px">
-            <div class="flex items-center gap-1.5 mb-1">
-              <div class="w-3 h-3 rounded-full" style="background:\${g.color}"></div>
-              <span class="text-sm font-bold text-gray-700">\${g.name}</span>
-            </div>
-            <p class="text-4xl font-black leading-none mb-1" style="color:\${g.color}">\${pct.toFixed(1)}<span class="text-lg font-bold">%</span></p>
-            <p class="text-xs text-gray-500 mb-3">\${fmtAmt(g.balance)}<br>\${fmtN(g.count)}건</p>
-            <div class="space-y-1 text-xs">
-              <div class="flex items-center gap-1.5">
-                <i class="fas fa-percentage text-gray-400" style="width:12px"></i>
-                <span class="text-gray-500">금리</span>
-                <span class="font-bold text-gray-700">\${avgR}%</span>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <i class="fas fa-exclamation-triangle text-gray-400" style="width:12px"></i>
-                <span class="text-gray-500">연체</span>
-                <span class="font-bold \${odColor}">\${odR}%</span>
-              </div>
-            </div>
+      return \`<div class="card" style="border-top:3px solid \${g.color};overflow:hidden">
+        <!-- 그룹 헤더 행 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${g.color}08">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:10px;height:10px;border-radius:50%;background:\${g.color}"></div>
+            <span style="font-size:13px;font-weight:700;color:#374151">\${g.name}</span>
+            <span style="font-size:22px;font-weight:900;line-height:1;color:\${g.color}">\${pct.toFixed(1)}%</span>
           </div>
-          <!-- 세로 구분선 -->
-          <div class="w-px self-stretch rounded" style="background:\${g.color}30"></div>
-          <!-- 오른쪽: 카테고리 미니카드 -->
-          <div class="flex-1 grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
-            \${catCards}
+          <div style="display:flex;gap:10px;font-size:11px;color:#6b7280">
+            <span>\${fmtAmt(g.balance)} / \${fmtN(g.count)}건</span>
+            <span>금리 <b style="color:#374151">\${avgR}%</b></span>
+            <span>연체 <b style="\${odColor}">\${odR}%</b></span>
           </div>
         </div>
+        <!-- 카테고리 리스트 테이블 -->
+        <table style="width:100%;border-collapse:collapse">
+          <tbody>\${catRows}</tbody>
+        </table>
       </div>\`;
     }).join('')}
-  </div>\`:''}\n\n  <!-- ── 카테고리(하위) 상세 테이블 ── -->
+  </div>\`:''}\n  </div>\`:''}\n\n  <!-- ── 카테고리(하위) 상세 테이블 ── -->
   <div>
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
