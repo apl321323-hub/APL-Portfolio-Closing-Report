@@ -1861,61 +1861,54 @@ function renderBalance(el) {
     </div>
   </div>
 
-  <!-- ── 카테고리(하위) 상세 테이블 ── -->
-  <div>
-    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
-  </div>
+  <!-- ── 상품별 상세 테이블 ── -->
   <div class="card overflow-hidden">
+    <div class="px-5 pt-4 pb-3 border-b border-gray-100 flex items-center gap-2">
+      <i class="fas fa-table text-emerald-600"></i>
+      <h3 class="text-sm font-bold text-gray-700">상품별 상세</h3>
+    </div>
     <table class="data-table">
       <thead><tr>
-        <th style="width:130px">상품구분</th>
-        <th class="text-right">구성비</th>
-        <th class="text-right">잔고금액</th>
+        <th>카테고리</th>
+        <th>상품명</th>
         <th class="text-right">건수</th>
+        <th class="text-right">잔고</th>
+        <th class="text-right">구성비</th>
         <th class="text-right">평균금리</th>
         <th class="text-right">평균LTV</th>
         <th class="text-right">10일초과 연체율</th>
         <th class="text-right">30일초과 연체율</th>
         <th class="text-right">90일초과 연체율</th>
-        <th>상품명</th>
       </tr></thead>
-      <tbody>\${catData.map(c=>{
-        const pct=(c.balance/total*100);
-        const avgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
-        const avgLtv=c.ltvAppSum>0?(c.ltvWSum/c.ltvAppSum*100).toFixed(1):'-';
-        const od10r=c.balance>0?(c.bal10Over/c.balance*100).toFixed(2):'0.00';
-        const od30r=c.balance>0?(c.bal30Over/c.balance*100).toFixed(2):'0.00';
-        const od90r=c.balance>0?(c.bal90Over/c.balance*100).toFixed(2):'0.00';
+      <tbody>\${Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).map(([p,v])=>{
+        const cat=getCategoryOfProduct(p);
+        const pct2=(v.balance/total*100).toFixed(1);
+        const avgR2=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
+        const avgLtv2=v.ltvAppSum>0?(v.ltvWSum/v.ltvAppSum*100).toFixed(1):'-';
+        const b10over=v.bal10+v.bal30_+v.bal60+v.bal90+v.balMore;
+        const b30over=v.bal30_+v.bal60+v.bal90+v.balMore;
+        const b90over=v.balMore;
+        const od10r2=v.balance>0?(b10over/v.balance*100).toFixed(2):'0.00';
+        const od30r2=v.balance>0?(b30over/v.balance*100).toFixed(2):'0.00';
+        const od90r2=v.balance>0?(b90over/v.balance*100).toFixed(2):'0.00';
         return \`<tr>
-          <td><div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div><span class="font-bold text-gray-800">\${c.name}</span></div></td>
-          <td class="text-right"><span class="font-bold text-base" style="color:\${c.color}">\${pct.toFixed(1)}%</span><div class="progress-bar mt-1" style="height:4px"><div class="progress-fill" style="width:\${Math.min(pct,100)}%;background:\${c.color}"></div></div></td>
-          <td class="text-right font-semibold">\${fmtAmt(c.balance)}</td>
-          <td class="text-right">\${fmtN(c.count)}건</td>
-          <td class="text-right">\${avgR}%</td>
-          <td class="text-right">\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
-          <td class="text-right \${parseFloat(od10r)>=3?'text-red-600 font-bold':parseFloat(od10r)>=1?'text-orange-500':parseFloat(od10r)>0?'text-yellow-600':''}">\${od10r}%</td>
-          <td class="text-right \${parseFloat(od30r)>=3?'text-red-600 font-bold':parseFloat(od30r)>=1?'text-orange-500':parseFloat(od30r)>0?'text-yellow-600':''}">\${od30r}%</td>
-          <td class="text-right \${parseFloat(od90r)>=1?'text-red-600 font-bold':parseFloat(od90r)>0?'text-orange-500':''}">\${od90r}%</td>
-          <td><div class="flex flex-wrap gap-1">\${c.products.map(p=>\`<span class="text-xs px-2 py-0.5 rounded-full text-white" style="background:\${c.color}cc">\${p}</span>\`).join('')}</div></td>
+          <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
+          <td class="font-medium">\${p}</td>
+          <td class="text-right">\${fmtN(v.count)}건</td>
+          <td class="text-right font-semibold">\${fmtAmt(v.balance)}</td>
+          <td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
+          <td class="text-right">\${avgR2}%</td>
+          <td class="text-right">\${avgLtv2!=='-'?avgLtv2+'%':'-'}</td>
+          <td class="text-right \${parseFloat(od10r2)>=3?'text-red-600 font-bold':parseFloat(od10r2)>=1?'text-orange-500':parseFloat(od10r2)>0?'text-yellow-600':''}">
+            \${od10r2}%</td>
+          <td class="text-right \${parseFloat(od30r2)>=3?'text-red-600 font-bold':parseFloat(od30r2)>=1?'text-orange-500':parseFloat(od30r2)>0?'text-yellow-600':''}">
+            \${od30r2}%</td>
+          <td class="text-right \${parseFloat(od90r2)>=1?'text-red-600 font-bold':parseFloat(od90r2)>0?'text-orange-500':''}">
+            \${od90r2}%</td>
         </tr>\`;
       }).join('')}
       </tbody>
     </table>
-  </div>
-
-  <!-- ── 상품별 상세 테이블 ── -->
-  <div class="card p-5">
-    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2" style="color:#059669"></i>상품별 상세</h3>
-    <div class="overflow-auto" style="max-height:380px">
-      <table class="data-table"><thead><tr><th>카테고리</th><th>상품명</th><th>건수</th><th>잔고</th><th>구성비</th><th>평균금리</th><th>연체율</th></tr></thead>
-      <tbody>\${Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).map(([p,v])=>{
-        const cat=getCategoryOfProduct(p);const pct2=(v.balance/total*100).toFixed(1);const avgR2=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
-        const odR=v.count>0?((v.overdue30+v.overdue60+v.overdue90+v.overdueMore)/v.count*100).toFixed(1):'0';
-        return \`<tr><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td><td class="font-medium">\${p}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
-        <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
-        <td>\${avgR2}%</td><td class="\${parseFloat(odR)>=5?'text-red-600 font-bold':parseFloat(odR)>=3?'text-orange-500':''}">\${odR}%</td></tr>\`;}).join('')}
-      </tbody></table>
-    </div>
   </div>
 </div>\`;
   setTimeout(()=>{
