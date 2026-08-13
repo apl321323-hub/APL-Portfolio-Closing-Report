@@ -2378,65 +2378,6 @@ function renderAgent(el) {
   el.innerHTML=\`
 <div class="space-y-5">
   <h2 class="text-lg font-bold">에이전트(광고매체) 분석</h2>
-  \${agGrpData.length>0?\`
-  <!-- ── 에이전트 카테고리 구분선 바 ── -->
-  <div class="flex rounded-xl overflow-hidden h-8">
-    \${agGrpData.map(c=>\`<div class="flex items-center justify-center text-white text-xs font-bold" style="width:\${(c.balance/total*100).toFixed(1)}%;background:\${c.color}" title="\${c.name}: \${fmtAmt(c.balance)}">\${(c.balance/total*100)>=6?c.name:''}</div>\`).join('')}
-  </div>
-
-  <!-- ── 상품 카테고리별 카드 (카드 안: 에이전트명 잔고 내림차순) ── -->
-  <div class="grid gap-3" style="grid-template-columns:repeat(\${Math.min(prodCatData.length,3)},1fr)">
-    \${prodCatData.map(c=>{
-      const cpct=total>0?(c.totalBalance/total*100):0;
-      const agentRows=c.agents.map(ag=>{
-        const apct=c.totalBalance>0?(ag.balance/c.totalBalance*100):0;
-        const totpct=total>0?(ag.balance/total*100):0;
-        const ar=ag.rateBalSum>0?(ag.rateWSum/ag.rateBalSum).toFixed(2):'-';
-        const aod10r=ag.balance>0?((ag.bal10Over||0)/ag.balance*100).toFixed(1):'0';
-        const aod10Num=parseFloat(aod10r);
-        const aod10Style=aod10Num>=8?'color:#dc2626;font-weight:700':aod10Num>=4?'color:#f97316':'color:#16a34a';
-        return \`<tr style="border-top:1px solid #f3f4f6">
-          <td style="padding:6px 8px;width:10px">
-            <div style="width:7px;height:7px;border-radius:50%;background:\${c.color}55;flex-shrink:0"></div>
-          </td>
-          <td style="padding:6px 4px;white-space:nowrap">
-            <span style="font-size:12px;font-weight:600;color:#374151">\${ag.name}</span>
-          </td>
-          <td style="padding:6px 4px;text-align:right">
-            <span style="font-size:12px;font-weight:800;color:\${c.color}">\${totpct.toFixed(1)}%</span>
-            <div style="font-size:10px;color:#9ca3af">카테고리내 \${apct.toFixed(1)}%</div>
-          </td>
-          <td style="padding:6px 4px;text-align:right">
-            <span style="font-size:12px;font-weight:600;color:#1f2937">\${fmtAmt(ag.balance)}</span>
-            <div style="font-size:10px;color:#9ca3af">\${fmtN(ag.count)}건</div>
-          </td>
-          <td style="padding:6px 4px;text-align:right">
-            <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${ar}%</b></span>
-          </td>
-          <td style="padding:6px 8px;text-align:right">
-            <span style="font-size:11px;\${aod10Style}">연체 \${aod10r}%</span>
-          </td>
-        </tr>\`;
-      }).join('');
-      return \`<div class="card" style="border-top:3px solid \${c.color};overflow:hidden">
-        <!-- 상품 카테고리 헤더 -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${c.color}08">
-          <div style="display:flex;align-items:center;gap:6px">
-            <div style="width:10px;height:10px;border-radius:50%;background:\${c.color}"></div>
-            <span style="font-size:13px;font-weight:700;color:#374151">\${c.name}</span>
-            <span style="font-size:22px;font-weight:900;line-height:1;color:\${c.color}">\${cpct.toFixed(1)}%</span>
-          </div>
-          <div style="display:flex;gap:10px;font-size:11px;color:#6b7280">
-            <span>\${fmtAmt(c.totalBalance)} / \${fmtN(c.totalCount)}건</span>
-          </div>
-        </div>
-        <!-- 에이전트 리스트 (잔고 내림차순) -->
-        <table style="width:100%;border-collapse:collapse">
-          <tbody>\${agentRows}</tbody>
-        </table>
-      </div>\`;
-    }).join('')}
-  </div>\`:''}
 
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
     <!-- 카테고리 구성비 파이차트 (왼쪽 2/5) -->
@@ -2498,6 +2439,66 @@ function renderAgent(el) {
     </table>
     </div>
   </div>
+
+  <!-- ── 상품별 에이전트 구성비 ── -->
+  \${prodCatData.length>0?\`
+  <div class="card overflow-hidden">
+    <div class="px-5 pt-4 pb-3 border-b border-gray-100">
+      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-layer-group mr-2 text-orange-500"></i>상품별 에이전트구성비</h3>
+    </div>
+    <div class="p-4">
+      <div class="grid gap-3" style="grid-template-columns:repeat(\${Math.min(prodCatData.length,3)},1fr)">
+        \${prodCatData.map(c=>{
+          const cpct=total>0?(c.totalBalance/total*100):0;
+          const agentRows=c.agents.map(ag=>{
+            const apct=c.totalBalance>0?(ag.balance/c.totalBalance*100):0;
+            const totpct=total>0?(ag.balance/total*100):0;
+            const ar=ag.rateBalSum>0?(ag.rateWSum/ag.rateBalSum).toFixed(2):'-';
+            const aod10r=ag.balance>0?((ag.bal10Over||0)/ag.balance*100).toFixed(1):'0';
+            const aod10Num=parseFloat(aod10r);
+            const aod10Style=aod10Num>=8?'color:#dc2626;font-weight:700':aod10Num>=4?'color:#f97316':'color:#16a34a';
+            return \`<tr style="border-top:1px solid #f3f4f6">
+              <td style="padding:6px 8px;width:10px">
+                <div style="width:7px;height:7px;border-radius:50%;background:\${c.color}55;flex-shrink:0"></div>
+              </td>
+              <td style="padding:6px 4px;white-space:nowrap">
+                <span style="font-size:12px;font-weight:600;color:#374151">\${ag.name}</span>
+              </td>
+              <td style="padding:6px 4px;text-align:right">
+                <span style="font-size:12px;font-weight:800;color:\${c.color}">\${totpct.toFixed(1)}%</span>
+                <div style="font-size:10px;color:#9ca3af">카테고리내 \${apct.toFixed(1)}%</div>
+              </td>
+              <td style="padding:6px 4px;text-align:right">
+                <span style="font-size:12px;font-weight:600;color:#1f2937">\${fmtAmt(ag.balance)}</span>
+                <div style="font-size:10px;color:#9ca3af">\${fmtN(ag.count)}건</div>
+              </td>
+              <td style="padding:6px 4px;text-align:right">
+                <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${ar}%</b></span>
+              </td>
+              <td style="padding:6px 8px;text-align:right">
+                <span style="font-size:11px;\${aod10Style}">연체 \${aod10r}%</span>
+              </td>
+            </tr>\`;
+          }).join('');
+          return \`<div class="card" style="border-top:3px solid \${c.color};overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${c.color}08">
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="width:10px;height:10px;border-radius:50%;background:\${c.color}"></div>
+                <span style="font-size:13px;font-weight:700;color:#374151">\${c.name}</span>
+                <span style="font-size:22px;font-weight:900;line-height:1;color:\${c.color}">\${cpct.toFixed(1)}%</span>
+              </div>
+              <div style="font-size:11px;color:#6b7280">
+                <span>\${fmtAmt(c.totalBalance)} / \${fmtN(c.totalCount)}건</span>
+              </div>
+            </div>
+            <table style="width:100%;border-collapse:collapse">
+              <tbody>\${agentRows}</tbody>
+            </table>
+          </div>\`;
+        }).join('')}
+      </div>
+    </div>
+  </div>\`:''}
 </div>\`;
   setTimeout(()=>{
     // 파이차트: 카테고리 기준
