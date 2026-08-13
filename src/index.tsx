@@ -2133,8 +2133,104 @@ function buildAgentGroupBalanceCards(agGrpData, total) {
     + '</div>';
 }
 
+// ==================== 에이전트 상세 테이블 필터 ====================
+let _agDetailArr = [];   // 현재 aArr 캐시 (필터 갱신용)
+let _agDetailTotal = 0;  // 현재 total 캐시
+let _agCatFilter = new Set(); // 선택된 카테고리 id 집합 (빈 Set = 전체)
+
+function renderAgDetailRows(aArr, total) {
+  // 캐시 갱신
+  _agDetailArr  = aArr;
+  _agDetailTotal = total;
+
+  // 필터 적용: 빈 Set이면 전체
+  const rows = aArr.filter(function([a]) {
+    if (_agCatFilter.size === 0) return true;
+    const cat = getCategoryOfAgent(a);
+    return _agCatFilter.has(cat.id);
+  });
+
+  if (rows.length === 0) {
+    return '<tr><td colspan="15" style="text-align:center;padding:24px;color:#9ca3af;font-size:13px">선택한 카테고리에 해당하는 에이전트가 없습니다</td></tr>';
+  }
+
+  return rows.map(function([a, v], i) {
+    const cat   = getCategoryOfAgent(a);
+    const pct   = (v.balance / total * 100).toFixed(1);
+    const avgR  = v.rateBalSum > 0 ? (v.rateWSum / v.rateBalSum).toFixed(2) : '-';
+    const b10over = v.bal30_ + v.bal60 + v.bal90 + v.balMore;
+    const b30over = v.bal60  + v.bal90 + v.balMore;
+    const b90over = v.balMore;
+    const od10r = v.balance > 0 ? (b10over / v.balance * 100).toFixed(2) : '0.00';
+    const od30r = v.balance > 0 ? (b30over / v.balance * 100).toFixed(2) : '0.00';
+    const od90r = v.balance > 0 ? (b90over / v.balance * 100).toFixed(2) : '0.00';
+    const g1bal = (v.grpBal && v.grpBal['g1'] ? v.grpBal['g1'].balance : 0);
+    const g2bal = (v.grpBal && v.grpBal['g2'] ? v.grpBal['g2'].balance : 0);
+    const od10cls = parseFloat(od10r) >= 8 ? 'text-red-600 font-bold' : parseFloat(od10r) >= 4 ? 'text-orange-500' : 'text-green-600';
+    const od30cls = parseFloat(od30r) >= 8 ? 'text-red-600 font-bold' : parseFloat(od30r) >= 4 ? 'text-orange-500' : 'text-green-600';
+    const od90cls = parseFloat(od90r) >= 8 ? 'text-red-600 font-bold' : parseFloat(od90r) >= 4 ? 'text-orange-500' : 'text-green-600';
+    return '<tr>'
+      + '<td class="text-gray-400">' + (i + 1) + '</td>'
+      + '<td class="font-medium">' + a + '</td>'
+      + '<td><span class="badge" style="background:' + cat.color + '22;color:' + cat.color + '">' + cat.name + '</span></td>'
+      + '<td class="text-right">' + fmtN(v.count) + '</td>'
+      + '<td class="text-right font-semibold">' + fmtAmt(v.balance) + '</td>'
+      + '<td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:' + pct + '%;background:' + cat.color + '"></div></div><span>' + pct + '%</span></div></td>'
+      + '<td class="text-right">' + avgR + '%</td>'
+      + '<td class="text-right font-semibold" style="color:#1e40af">' + fmtAmt(g1bal) + '</td>'
+      + '<td class="text-right text-xs text-blue-700">' + (v.balance > 0 ? (g1bal / v.balance * 100).toFixed(1) + '%' : '-') + '</td>'
+      + '<td class="text-right font-semibold" style="color:#065f46">' + fmtAmt(g2bal) + '</td>'
+      + '<td class="text-right text-xs text-green-700">' + (v.balance > 0 ? (g2bal / v.balance * 100).toFixed(1) + '%' : '-') + '</td>'
+      + '<td class="text-right ' + (b10over > 0 ? 'text-orange-500 font-semibold' : '') + '">' + (b10over > 0 ? fmtAmt(b10over) : '-') + '</td>'
+      + '<td class="text-right ' + od10cls + '">' + od10r + '%</td>'
+      + '<td class="text-right ' + od30cls + '">' + od30r + '%</td>'
+      + '<td class="text-right ' + od90cls + '">' + od90r + '%</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function agCatFilterToggle(catId) {
+  if (catId === '__all__') {
+    // 전체 버튼: 필터 초기화
+    _agCatFilter.clear();
+  } else {
+    // 해당 카테고리 토글
+    if (_agCatFilter.has(catId)) {
+      _agCatFilter.delete(catId);
+    } else {
+      _agCatFilter.add(catId);
+    }
+  }
+  // 버튼 스타일 갱신
+  _agCatFilterRefreshButtons();
+  // 테이블 tbody만 갱신
+  const tbody = document.getElementById('ag-detail-tbody');
+  if (tbody) tbody.innerHTML = renderAgDetailRows(_agDetailArr, _agDetailTotal);
+}
+
+function _agCatFilterRefreshButtons() {
+  // 전체 버튼
+  const allBtn = document.getElementById('ag-filter-__all__');
+  if (allBtn) {
+    const isAll = _agCatFilter.size === 0;
+    allBtn.style.background = isAll ? '#4f46e5' : '#fff';
+    allBtn.style.color      = isAll ? '#fff'    : '#4f46e5';
+    allBtn.style.borderColor = isAll ? '#4f46e5' : '#c7d2fe';
+  }
+  // 카테고리 버튼
+  AGENT_CATEGORIES.forEach(function(c) {
+    const btn = document.getElementById('ag-filter-' + c.id);
+    if (!btn) return;
+    const active = _agCatFilter.has(c.id);
+    btn.style.background  = active ? c.color : '#fff';
+    btn.style.color       = active ? '#fff'  : c.color;
+    btn.style.borderColor = active ? c.color : c.color + '88';
+  });
+}
+
 // ==================== 페이지: 에이전트 분석 ====================
 function renderAgent(el) {
+  _agCatFilter.clear(); // 페이지 진입 시 필터 초기화
   const total=LOAN.records.reduce((s,r)=>s+r.b,0);
   const aMap=aggregateByAgent();
   const aArr=Object.entries(aMap).sort((a,b)=>b[1].balance-a[1].balance);
@@ -2251,8 +2347,20 @@ function renderAgent(el) {
   \${buildAgentGroupBalanceCards(agGrpData,total)}
 
   <div class="card overflow-hidden">
-    <div class="px-5 pt-5 pb-3 border-b border-gray-100">
-      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-table mr-2 text-indigo-500"></i>에이전트별 상세</h3>
+    <div class="px-5 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between gap-3">
+      <h3 class="text-sm font-bold text-gray-700 flex-shrink-0"><i class="fas fa-table mr-2 text-indigo-500"></i>에이전트별 상세</h3>
+      <!-- 카테고리 필터 버튼 -->
+      <div class="flex flex-wrap gap-1.5 items-center justify-end">
+        <span class="text-xs text-gray-400 flex-shrink-0">카테고리 필터:</span>
+        <button onclick="agCatFilterToggle('__all__')" id="ag-filter-__all__"
+          class="px-2.5 py-1 rounded-full text-xs font-semibold border transition-all"
+          style="background:#4f46e5;color:#fff;border-color:#4f46e5">전체</button>
+        \${[...AGENT_CATEGORIES].sort((a,b)=>(a.order||99)-(b.order||99)).map(c=>\`
+        <button onclick="agCatFilterToggle('\${c.id}')" id="ag-filter-\${c.id}"
+          class="px-2.5 py-1 rounded-full text-xs font-semibold border transition-all"
+          style="background:#fff;color:\${c.color};border-color:\${c.color}88">\${c.name}</button>
+        \`).join('')}
+      </div>
     </div>
     <div class="overflow-auto">
       <table class="data-table"><thead><tr>
@@ -2263,34 +2371,8 @@ function renderAgent(el) {
         <th class="text-right">10일이상 연체금</th><th class="text-right">10일이상 연체율</th>
         <th class="text-right">30일초과(%)</th><th class="text-right">90일초과(%)</th>
       </tr></thead>
-      <tbody>\${aArr.map(([a,v],i)=>{
-        const cat=getCategoryOfAgent(a);
-        const pct=(v.balance/total*100).toFixed(1);
-        const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';
-        const b10over=v.bal30_+v.bal60+v.bal90+v.balMore;
-        const b30over=v.bal60+v.bal90+v.balMore;
-        const b90over=v.balMore;
-        const od10r=v.balance>0?(b10over/v.balance*100).toFixed(2):'0.00';
-        const od30r=v.balance>0?(b30over/v.balance*100).toFixed(2):'0.00';
-        const od90r=v.balance>0?(b90over/v.balance*100).toFixed(2):'0.00';
-        return \`<tr>
-          <td class="text-gray-400">\${i+1}</td>
-          <td class="font-medium">\${a}</td>
-          <td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
-          <td class="text-right">\${fmtN(v.count)}</td>
-          <td class="text-right font-semibold">\${fmtAmt(v.balance)}</td>
-          <td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:\${pct}%;background:\${cat.color}"></div></div><span>\${pct}%</span></div></td>
-          <td class="text-right">\${avgR}%</td>
-          <td class="text-right font-semibold" style="color:#1e40af">\${fmtAmt(v.grpBal['g1']?.balance||0)}</td>
-          <td class="text-right text-xs text-blue-700">\${v.balance>0?((v.grpBal['g1']?.balance||0)/v.balance*100).toFixed(1)+'%':'-'}</td>
-          <td class="text-right font-semibold" style="color:#065f46">\${fmtAmt(v.grpBal['g2']?.balance||0)}</td>
-          <td class="text-right text-xs text-green-700">\${v.balance>0?((v.grpBal['g2']?.balance||0)/v.balance*100).toFixed(1)+'%':'-'}</td>
-          <td class="text-right \${b10over>0?'text-orange-500 font-semibold':''}">\${b10over>0?fmtAmt(b10over):'-'}</td>
-          <td class="text-right \${parseFloat(od10r)>=8?'text-red-600 font-bold':parseFloat(od10r)>=4?'text-orange-500':'text-green-600'}">\${od10r}%</td>
-          <td class="text-right \${parseFloat(od30r)>=8?'text-red-600 font-bold':parseFloat(od30r)>=4?'text-orange-500':'text-green-600'}">\${od30r}%</td>
-          <td class="text-right \${parseFloat(od90r)>=8?'text-red-600 font-bold':parseFloat(od90r)>=4?'text-orange-500':'text-green-600'}">\${od90r}%</td>
-        </tr>\`;}).join('')}
-      </tbody></table>
+      <tbody id="ag-detail-tbody">\${renderAgDetailRows(aArr,total)}</tbody>
+    </table>
     </div>
   </div>
 </div>\`;
