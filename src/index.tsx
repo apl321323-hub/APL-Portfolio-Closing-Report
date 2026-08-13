@@ -415,6 +415,25 @@ let settingsAgentTab = 'categories';
 function getMonthsDB() {
   try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch(e){ return {}; }
 }
+// localStorage에 잘못 저장된 base_date (말일 아닌 날짜) 자동 보정
+function migrateBaseDates() {
+  try {
+    const db = getMonthsDB();
+    let changed = false;
+    for (const [yyyymm, v] of Object.entries(db)) {
+      if (!v.base_date) continue;
+      const yr = parseInt(yyyymm.slice(0,4));
+      const mo = parseInt(yyyymm.slice(4));
+      const correctLastDay = new Date(yr, mo, 0).getDate();
+      const correctDate = yr + '-' + String(mo).padStart(2,'0') + '-' + String(correctLastDay).padStart(2,'0');
+      if (v.base_date !== correctDate) {
+        v.base_date = correctDate;
+        changed = true;
+      }
+    }
+    if (changed) localStorage.setItem(DB_KEY, JSON.stringify(db));
+  } catch(e) {}
+}
 function saveMonthsDB(db) {
   // 레코드 슬림화: 빈 문자열 필드 제거해서 크기 절약
   const slim = {};
@@ -491,6 +510,7 @@ async function init() {
     TREND = await trendRes.json();
 
     loadCategoriesFromStorage();
+    migrateBaseDates(); // localStorage base_date 말일 자동 보정
 
     // 2. localStorage에 저장된 가장 최신 월 로드
     const months = getMonthKeys();
@@ -1242,8 +1262,10 @@ function processContractFile(file) {
       const agents = new Set(records.map(r=>r.a)).size;
 
       setTimeout(()=>{
+        // 해당 월의 마지막 날 계산 (월말 결산기준일)
+        const lastDay = new Date(parseInt(y), parseInt(mo), 0).getDate();
         pendingContract = {
-          base_date: y+'-'+mo+'-30',
+          base_date: y+'-'+mo+'-'+String(lastDay).padStart(2,'0'),
           records,
           count: records.length,
           uploaded_at: new Date().toLocaleDateString('ko-KR')
@@ -1418,7 +1440,9 @@ function processFile(file) {
       // 기준월 추출 (선택된 연월)
       const y = document.getElementById('upload-year').value;
       const mo = document.getElementById('upload-month').value;
-      const baseDate = y + '-' + mo + '-30';
+      // 해당 월의 마지막 날 계산 (7월=31, 2월=28/29 등 정확히 처리)
+      const lastDayOfMonth = new Date(parseInt(y), parseInt(mo), 0).getDate();
+      const baseDate = y + '-' + mo + '-' + String(lastDayOfMonth).padStart(2,'0');
 
       pendingParsed = {
         base_date: baseDate,
