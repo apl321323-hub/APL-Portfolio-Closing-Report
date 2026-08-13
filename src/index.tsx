@@ -1788,7 +1788,7 @@ function renderBalance(el) {
       const avgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';
       const odR=g.count>0?((g.overdueAny/g.count)*100).toFixed(1):'0';
       const odRNum=parseFloat(odR);
-      const odColor=odRNum>=5?'color:#dc2626':odRNum>=3?'color:#f97316':'color:#16a34a';
+      const odColor=odRNum>=8?'color:#dc2626':odRNum>=4?'color:#f97316':'color:#16a34a';
       // 카테고리 로우 항목
       const catRows=g.cats.map(c=>{
         const cc=catMap[c.id]||c;
@@ -1797,7 +1797,7 @@ function renderBalance(el) {
         const cr=cc.rateBalSum>0?(cc.rateWSum/cc.rateBalSum).toFixed(2):'-';
         const od30r=cc.balance>0?((cc.bal30Over||0)/cc.balance*100).toFixed(1):'0';
         const od30Num=parseFloat(od30r);
-        const od30Style=od30Num>=5?'color:#dc2626;font-weight:700':od30Num>=3?'color:#f97316':'color:#16a34a';
+        const od30Style=od30Num>=8?'color:#dc2626;font-weight:700':od30Num>=4?'color:#f97316':'color:#16a34a';
         return \`<tr style="border-top:1px solid #f3f4f6">
           <td style="padding:6px 8px;width:10px">
             <div style="width:8px;height:8px;border-radius:50%;background:\${cc.color};flex-shrink:0"></div>
@@ -1899,11 +1899,11 @@ function renderBalance(el) {
           <td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:\${pct2}%;background:\${cat.color}"></div></div><span>\${pct2}%</span></div></td>
           <td class="text-right">\${avgR2}%</td>
           <td class="text-right">\${avgLtv2!=='-'?avgLtv2+'%':'-'}</td>
-          <td class="text-right \${parseFloat(od10r2)>=3?'text-red-600 font-bold':parseFloat(od10r2)>=1?'text-orange-500':parseFloat(od10r2)>0?'text-yellow-600':''}">
+          <td class="text-right \${parseFloat(od10r2)>=8?'text-red-600 font-bold':parseFloat(od10r2)>=4?'text-orange-500':'text-green-600'}">
             \${od10r2}%</td>
-          <td class="text-right \${parseFloat(od30r2)>=3?'text-red-600 font-bold':parseFloat(od30r2)>=1?'text-orange-500':parseFloat(od30r2)>0?'text-yellow-600':''}">
+          <td class="text-right \${parseFloat(od30r2)>=8?'text-red-600 font-bold':parseFloat(od30r2)>=4?'text-orange-500':'text-green-600'}">
             \${od30r2}%</td>
-          <td class="text-right \${parseFloat(od90r2)>=1?'text-red-600 font-bold':parseFloat(od90r2)>0?'text-orange-500':''}">
+          <td class="text-right \${parseFloat(od90r2)>=8?'text-red-600 font-bold':parseFloat(od90r2)>=4?'text-orange-500':'text-green-600'}">
             \${od90r2}%</td>
         </tr>\`;
       }).join('')}
@@ -1954,9 +1954,9 @@ function renderProduct(el) {
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${p}</td><td><span class="badge" style="background:\${cat.color}22;color:\${cat.color}">\${cat.name}</span></td>
         <td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td><td>\${pct}%</td><td>\${avgR}%</td><td>\${avgLtv!=='-'?avgLtv+'%':'-'}</td>
         <td class="\${bal10Over>0?'text-orange-500 font-semibold':''}">\${bal10Over>0?fmtAmt(bal10Over):'-'}</td>
-        <td class="\${parseFloat(od10r)>=1?'text-orange-500':parseFloat(od10r)>0?'text-yellow-600':''}">\${od10r}%</td>
-        <td class="\${parseFloat(od30r)>=1?'text-orange-500 font-bold':parseFloat(od30r)>0?'text-yellow-600':''}">\${od30r}%</td>
-        <td class="\${parseFloat(od90r)>=1?'text-red-600 font-bold':parseFloat(od90r)>0?'text-orange-500':''}">\${od90r}%</td></tr>\`;}).join('')}
+        <td class="\${parseFloat(od10r)>=8?'text-red-600 font-bold':parseFloat(od10r)>=4?'text-orange-500':'text-green-600'}">\${od10r}%</td>
+        <td class="\${parseFloat(od30r)>=8?'text-red-600 font-bold':parseFloat(od30r)>=4?'text-orange-500':'text-green-600'}">\${od30r}%</td>
+        <td class="\${parseFloat(od90r)>=8?'text-red-600 font-bold':parseFloat(od90r)>=4?'text-orange-500':'text-green-600'}">\${od90r}%</td></tr>\`;}).join('')}
       </tbody></table>
     </div>
   </div>
@@ -1994,7 +1994,7 @@ function renderAgent(el) {
         const pct=(v.balance/total*100).toFixed(1);const avgR=v.rateBalSum>0?(v.rateWSum/v.rateBalSum).toFixed(2):'-';const odR=v.count>0?(v.overdue30/v.count*100).toFixed(1):'0';
         return \`<tr><td class="text-gray-400">\${i+1}</td><td class="font-medium">\${a}</td><td>\${fmtN(v.count)}</td><td class="font-semibold">\${fmtAmt(v.balance)}</td>
         <td><div class="flex items-center gap-2"><div class="progress-bar flex-1 w-16"><div class="progress-fill bg-blue-400" style="width:\${pct}%"></div></div><span>\${pct}%</span></div></td>
-        <td>\${avgR}%</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="\${parseFloat(odR)>=5?'text-red-600 font-bold':parseFloat(odR)>=3?'text-orange-500':''}">\${odR}%</td></tr>\`;}).join('')}
+        <td>\${avgR}%</td><td class="text-orange-500">\${fmtN(v.overdue30)}</td><td class="\${parseFloat(odR)>=8?'text-red-600 font-bold':parseFloat(odR)>=4?'text-orange-500':'text-green-600'}">\${odR}%</td></tr>\`;}).join('')}
       </tbody></table>
     </div>
   </div>
