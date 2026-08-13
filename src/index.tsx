@@ -2660,6 +2660,11 @@ function renderNewLoan(el) {
       return oi - oj;
     });
 
+  // ── 담보 그룹(g1) 기준 LTV KPI (담보/신용 패널의 담보 그룹과 동일한 값)
+  const g1Data    = grpPanelMap['g1'] || { count: 0, ltvW: 0, ltvApp: 0 };
+  const kpiLtv    = g1Data.ltvApp > 0 ? g1Data.ltvW / g1Data.ltvApp * 100 : null;
+  const kpiLtvCnt = g1Data.count;
+
   // ── 일별 집계
   const dayMap = {};
   recs.forEach(r => {
@@ -2747,9 +2752,9 @@ function renderNewLoan(el) {
         <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#fdf4ff"><i class="fas fa-home" style="color:#9333ea"></i></div>
         <span class="badge badge-purple">LTV</span>
       </div>
-      <p class="text-2xl font-bold" style="color:#9333ea">\${avgLtv !== null ? avgLtv.toFixed(1)+'%' : '-'}</p>
+      <p class="text-2xl font-bold" style="color:#9333ea">\${kpiLtv !== null ? kpiLtv.toFixed(1)+'%' : '-'}</p>
       <p class="text-xs text-gray-500 mt-1">담보 평균 LTV</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(colRecs.length)}건 (담보상품)</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(kpiLtvCnt)}건 (담보상품)</p>
     </div>
   </div>
 
