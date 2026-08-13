@@ -1654,55 +1654,43 @@ function renderOverview(el) {
         {label:'30일연체율(%)',data:TREND.total.overdue.map(o=>o.rate_30),borderColor:'#dc2626',yAxisID:'y1'}
       ],{y1:true});
 
-      // ── 2026.1월~ 신용/담보 융자잔고·신규대출 추이 ─────────────────
+      // ── 신용/담보 융자잔고 추이 (loan_data 있는 월만 표시) ─────────────────
+      // loan_data 없는 월은 data.json 외부집계값(신용(기타) 혼재)이라 기준 불일치 → 표시 안 함
       const jan26i = TREND.months.indexOf('26.1월');
       if(jan26i >= 0){
-        const months26 = TREND.months.slice(jan26i);
         const tProds   = TREND.products || [];
         const tTotal   = TREND.total;
 
-        // ★ 신용/담보 분리
-        // ▸ data.json 원본 월: '신용' product = g2 외부 집계값 그대로 사용
-        //                      담보 = total.balance - 신용 (g1 근사값)
-        // ▸ augmented 월(localStorage 보완): augmentTrendFromStorage에서
-        //   TREND.__creditByMonth[label]  = g2 합산 (CATEGORIES/GROUPS 기준)
-        //   TREND.__collateralByMonth[label] = g1 합산 (CATEGORIES/GROUPS 기준)
-        //   → 잔고구성비 aggregateByGroup()과 동일한 기준
-        const pCredit = tProds.find(p=>p.name==='신용');
-        const creditBal = months26.map((mn,mi)=>{
-          const absIdx = jan26i + mi;
-          // augmented 월이면 __creditByMonth 우선
-          if (TREND.__creditByMonth && TREND.__creditByMonth[mn] !== undefined) {
-            return TREND.__creditByMonth[mn];
-          }
-          // data.json 원본 월: '신용' product 직접 사용
-          return pCredit ? (pCredit.balance[absIdx]?.amount||0) : 0;
-        });
-        const collBal = months26.map((mn,mi)=>{
-          const absIdx = jan26i + mi;
-          // augmented 월이면 __collateralByMonth 우선
-          if (TREND.__collateralByMonth && TREND.__collateralByMonth[mn] !== undefined) {
-            return TREND.__collateralByMonth[mn];
-          }
-          // data.json 원본 월: total - 신용
-          const tot = tTotal.balance[absIdx]?.amount||0;
-          return tot - creditBal[mi];
-        });
+        // ★ loan_data(__creditByMonth)가 있는 월만 필터링
+        const months26All = TREND.months.slice(jan26i);
+        const months26 = months26All.filter(mn =>
+          TREND.__creditByMonth && TREND.__creditByMonth[mn] !== undefined
+        );
 
-        mkLine('ov-bal-grp', months26,[
-          {label:'신용(억)', data:creditBal, borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.07)', fill:true},
-          {label:'담보(억)', data:collBal,   borderColor:'#059669', backgroundColor:'rgba(5,150,105,.07)',  fill:true}
-        ],{extra:{scales:{y:{ticks:{callback:v=>v.toFixed(0)+'억'}}}}});
+        const creditBal = months26.map(mn => TREND.__creditByMonth[mn]);
+        const collBal   = months26.map(mn => TREND.__collateralByMonth[mn]);
 
-        // ── 신규대출 신용 상품별: 첨담보·차량·회생·신용 ─────────────
+        if(months26.length > 0){
+          mkLine('ov-bal-grp', months26,[
+            {label:'신용(억)', data:creditBal, borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.07)', fill:true},
+            {label:'담보(억)', data:collBal,   borderColor:'#059669', backgroundColor:'rgba(5,150,105,.07)',  fill:true}
+          ],{extra:{scales:{y:{ticks:{callback:v=>v.toFixed(0)+'억'}}}}});
+        } else {
+          const el = document.getElementById('ov-bal-grp');
+          if(el) el.innerHTML='<div class="flex items-center justify-center h-64 text-gray-400 text-sm">결산자료(loan_data) 없음 — 신용/담보 분리 불가</div>';
+        }
+
+        // ── 신규대출 신용 상품별: 첨담보·차량·회생·신용 (months26All: loan_data 유무 무관) ─
+        // 신규대출은 data.json 기반이므로 필터링 없이 26.1월~전체 표시
         const nlCreditNames  = ['첨담보','차량','회생','신용'];
         const nlCreditColors = ['#2563eb','#7c3aed','#dc2626','#059669'];
-        mkLine('ov-nl-credit', months26,
+        mkLine('ov-nl-credit', months26All,
           nlCreditNames.map((name,i)=>({
             label: name+'(억)',
-            data:  months26.map((_,mi)=>{
+            data:  months26All.map((mn)=>{
+              const absIdx = TREND.months.indexOf(mn);
               const p = tProds.find(x=>x.name===name);
-              return p ? (p.new_loans[jan26i+mi]?.amount||0) : 0;
+              return p ? (p.new_loans[absIdx]?.amount||0) : 0;
             }),
             borderColor:     nlCreditColors[i],
             backgroundColor: nlCreditColors[i]+'18',
@@ -1717,12 +1705,13 @@ function renderOverview(el) {
           {label:'담보론',        name:'토마토토탈론',        color:'#1e40af'},
           {label:'담보론(지분)',  name:'토마토토탈론플러스',  color:'#0891b2'},
         ];
-        mkLine('ov-nl-collateral', months26,
+        mkLine('ov-nl-collateral', months26All,
           nlCollDefs.map(d=>({
             label: d.label+'(억)',
-            data:  months26.map((_,mi)=>{
+            data:  months26All.map((mn)=>{
+              const absIdx = TREND.months.indexOf(mn);
               const p = tProds.find(x=>x.name===d.name);
-              return p ? (p.new_loans[jan26i+mi]?.amount||0) : 0;
+              return p ? (p.new_loans[absIdx]?.amount||0) : 0;
             }),
             borderColor:     d.color,
             backgroundColor: d.color+'18',
