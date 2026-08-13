@@ -2036,6 +2036,87 @@ function renderProduct(el) {
   },50);
 }
 
+// ==================== 에이전트 잔고구성비 카드 빌더 ====================
+function buildAgentGroupBalanceCards(agGrpData, total) {
+  if (!agGrpData || agGrpData.length === 0) return '';
+
+  const cards = agGrpData.map(function(cat) {
+    // 담보(g1) → 신용(g2) 순 정렬
+    const grpEntries = Object.values(cat.grpBal).sort(function(a, b) {
+      const order = {g1:0, g2:1};
+      return (order[a.id] !== undefined ? order[a.id] : 9) - (order[b.id] !== undefined ? order[b.id] : 9);
+    });
+    if (grpEntries.length === 0) return '';
+
+    const cols = Math.min(grpEntries.length, 2);
+
+    // 그룹 패널 생성
+    const grpPanels = grpEntries.map(function(g, gi) {
+      const gPct    = total > 0 ? (g.balance / total * 100) : 0;
+      const gAvgR   = g.rateBalSum > 0 ? (g.rateWSum / g.rateBalSum).toFixed(2) : '-';
+      const gOd10r  = g.balance > 0 ? (g.bal10Over / g.balance * 100).toFixed(1) : '0';
+      const gOd10Num = parseFloat(gOd10r);
+      const gOdColor = gOd10Num >= 8 ? '#dc2626' : gOd10Num >= 4 ? '#f97316' : '#16a34a';
+      const gAvgLtv  = (g.id === 'g1' && g.ltvAppSum > 0) ? (g.ltvWSum / g.ltvAppSum * 100).toFixed(1) : null;
+      const borderRight = gi < grpEntries.length - 1 ? '1px solid #e5e7eb' : 'none';
+
+      // 카테고리 행 생성
+      const catRowsHtml = Object.values(g.cats).sort(function(a,b){ return b.balance - a.balance; }).map(function(c) {
+        const cPct    = total > 0 ? (c.balance / total * 100) : 0;
+        const cGpct   = g.balance > 0 ? (c.balance / g.balance * 100) : 0;
+        const cAvgR   = c.rateBalSum > 0 ? (c.rateWSum / c.rateBalSum).toFixed(2) : '-';
+        const cOd10r  = c.balance > 0 ? (c.bal10Over / c.balance * 100).toFixed(1) : '0';
+        const cOd10Num = parseFloat(cOd10r);
+        const cOdColor = cOd10Num >= 8 ? '#dc2626' : cOd10Num >= 4 ? '#f97316' : '#16a34a';
+        const cOdWeight = cOd10Num >= 4 ? 700 : 400;
+        const cAvgLtv  = (g.id === 'g1' && c.ltvAppSum > 0) ? (c.ltvWSum / c.ltvAppSum * 100).toFixed(1) : null;
+        const ltvHtml  = cAvgLtv !== null ? '<div style="font-size:10px;color:#9ca3af">LTV <b style="color:#374151">' + cAvgLtv + '%</b></div>' : '';
+        return '<tr style="border-top:1px solid #f3f4f6">'
+          + '<td style="padding:5px 8px;width:12px"><div style="width:8px;height:8px;border-radius:50%;background:' + c.color + ';flex-shrink:0"></div></td>'
+          + '<td style="padding:5px 4px;white-space:nowrap"><span style="font-size:12px;font-weight:700;color:#374151">' + c.name + '</span></td>'
+          + '<td style="padding:5px 4px;text-align:right"><span style="font-size:13px;font-weight:900;color:' + c.color + '">' + cPct.toFixed(1) + '%</span><div style="font-size:10px;color:#9ca3af">그룹내 ' + cGpct.toFixed(1) + '%</div></td>'
+          + '<td style="padding:5px 4px;text-align:right"><span style="font-size:12px;font-weight:600;color:#1f2937">' + fmtAmt(c.balance) + '</span><div style="font-size:10px;color:#9ca3af">' + fmtN(c.count) + '건</div></td>'
+          + '<td style="padding:5px 4px;text-align:right"><span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">' + cAvgR + '%</b></span>' + ltvHtml + '</td>'
+          + '<td style="padding:5px 8px;text-align:right"><span style="font-size:11px;color:' + cOdColor + ';font-weight:' + cOdWeight + '">연체 ' + cOd10r + '%</span></td>'
+          + '</tr>';
+      }).join('');
+
+      const ltvHeaderHtml = gAvgLtv !== null ? '<span>LTV <b style="color:#374151">' + gAvgLtv + '%</b></span>' : '';
+
+      return '<div style="border-right:' + borderRight + '">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px 6px;background:' + g.color + '08">'
+          + '<div style="display:flex;align-items:center;gap:5px">'
+            + '<div style="width:9px;height:9px;border-radius:50%;background:' + g.color + '"></div>'
+            + '<span style="font-size:12px;font-weight:700;color:#374151">' + g.name + '</span>'
+            + '<span style="font-size:20px;font-weight:900;line-height:1;color:' + g.color + '">' + gPct.toFixed(1) + '%</span>'
+          + '</div>'
+          + '<div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">'
+            + '<span>' + fmtAmt(g.balance) + ' / ' + fmtN(g.count) + '건</span>'
+            + '<span>금리 <b style="color:#374151">' + gAvgR + '%</b></span>'
+            + ltvHeaderHtml
+            + '<span>연체 <b style="color:' + gOdColor + '">' + gOd10r + '%</b></span>'
+          + '</div>'
+        + '</div>'
+        + '<table style="width:100%;border-collapse:collapse"><tbody>' + catRowsHtml + '</tbody></table>'
+        + '</div>';
+    }).join('');
+
+    return '<div class="card overflow-hidden">'
+      + '<div style="background:' + cat.color + ';padding:7px 16px;text-align:center">'
+        + '<span style="color:#fff;font-size:13px;font-weight:700">' + cat.name + '</span>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:0">'
+        + grpPanels
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  return '<div class="space-y-3">'
+    + '<h3 class="text-sm font-bold text-gray-700"><i class="fas fa-layer-group mr-2 text-indigo-500"></i>카테고리별 잔고구성비 (담보·신용 구조)</h3>'
+    + cards
+    + '</div>';
+}
+
 // ==================== 페이지: 에이전트 분석 ====================
 function renderAgent(el) {
   const total=LOAN.records.reduce((s,r)=>s+r.b,0);
@@ -2151,91 +2232,7 @@ function renderAgent(el) {
   </div>
 
   <!-- ── 에이전트 카테고리별 잔고구성비 (담보/신용) ── -->
-  \${agGrpData.length>0?\`
-  <div class="space-y-3">
-    <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-layer-group mr-2 text-indigo-500"></i>카테고리별 잔고구성비 (담보·신용 구조)</h3>
-    \${agGrpData.map(cat=>{
-      const catPct=(cat.balance/total*100);
-      const catAvgR=cat.rateBalSum>0?(cat.rateWSum/cat.rateBalSum).toFixed(2):'-';
-      const catOd10r=cat.balance>0?(cat.bal10Over/cat.balance*100).toFixed(1):'0';
-      // 담보(g1)·신용(g2) 순으로 정렬
-      const grpEntries=Object.values(cat.grpBal).sort((a,b)=>{
-        const order={g1:0,g2:1};
-        return (order[a.id]??9)-(order[b.id]??9);
-      });
-      return \`<div class="card overflow-hidden">
-        <!-- 카테고리 플랫폼 헤더 -->
-        <div style="background:\${cat.color};padding:7px 16px;text-align:center">
-          <span style="color:#fff;font-size:13px;font-weight:700">\${cat.name}</span>
-        </div>
-        <!-- 담보/신용 그룹 2분할 -->
-        <div style="display:grid;grid-template-columns:repeat(\${Math.min(grpEntries.length,2)},1fr);gap:0">
-          \${grpEntries.map((g,gi)=>{
-            const gPct=total>0?(g.balance/total*100):0;
-            const gAvgR=g.rateBalSum>0?(g.rateWSum/g.rateBalSum).toFixed(2):'-';
-            const gOd10r=g.balance>0?(g.bal10Over/g.balance*100).toFixed(1):'0';
-            const gOd10Num=parseFloat(gOd10r);
-            const gOdColor=gOd10Num>=8?'#dc2626':gOd10Num>=4?'#f97316':'#16a34a';
-            const gAvgLtv=g.id==='g1'&&g.ltvAppSum>0?(g.ltvWSum/g.ltvAppSum*100).toFixed(1):null;
-            // 카테고리 행
-            const catRows=Object.values(g.cats).sort((a,b)=>b.balance-a.balance).map(c=>{
-              const cPct=total>0?(c.balance/total*100):0;
-              const cGpct=g.balance>0?(c.balance/g.balance*100):0;
-              const cAvgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
-              const cOd10r=c.balance>0?(c.bal10Over/c.balance*100).toFixed(1):'0';
-              const cOd10Num=parseFloat(cOd10r);
-              const cOdColor=cOd10Num>=8?'#dc2626':cOd10Num>=4?'#f97316':'#16a34a';
-              const cAvgLtv=g.id==='g1'&&c.ltvAppSum>0?(c.ltvWSum/c.ltvAppSum*100).toFixed(1):null;
-              return \\\`<tr style="border-top:1px solid #f3f4f6">
-                <td style="padding:5px 8px;width:12px">
-                  <div style="width:8px;height:8px;border-radius:50%;background:\\\${c.color};flex-shrink:0"></div>
-                </td>
-                <td style="padding:5px 4px;white-space:nowrap">
-                  <span style="font-size:12px;font-weight:700;color:#374151">\\\${c.name}</span>
-                </td>
-                <td style="padding:5px 4px;text-align:right">
-                  <span style="font-size:13px;font-weight:900;color:\\\${c.color}">\\\${cPct.toFixed(1)}%</span>
-                  <div style="font-size:10px;color:#9ca3af">그룹내 \\\${cGpct.toFixed(1)}%</div>
-                </td>
-                <td style="padding:5px 4px;text-align:right">
-                  <span style="font-size:12px;font-weight:600;color:#1f2937">\\\${fmtAmt(c.balance)}</span>
-                  <div style="font-size:10px;color:#9ca3af">\\\${fmtN(c.count)}건</div>
-                </td>
-                <td style="padding:5px 4px;text-align:right">
-                  <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\\\${cAvgR}%</b></span>
-                  \\\${cAvgLtv!==null?\\\`<div style="font-size:10px;color:#9ca3af">LTV <b style="color:#374151">\\\${cAvgLtv}%</b></div>\\\`:''}
-                </td>
-                <td style="padding:5px 8px;text-align:right">
-                  <span style="font-size:11px;color:\\\${cOdColor};font-weight:\\\${cOd10Num>=4?700:400}">연체 \\\${cOd10r}%</span>
-                </td>
-              </tr>\\\`;
-            }).join('');
-            return \`<div style="border-right:\${gi<grpEntries.length-1?'1px solid #e5e7eb':'none'}">
-              <!-- 그룹 헤더 -->
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px 6px;background:\${g.color}08">
-                <div style="display:flex;align-items:center;gap:5px">
-                  <div style="width:9px;height:9px;border-radius:50%;background:\${g.color}"></div>
-                  <span style="font-size:12px;font-weight:700;color:#374151">\${g.name}</span>
-                  <span style="font-size:20px;font-weight:900;line-height:1;color:\${g.color}">\${gPct.toFixed(1)}%</span>
-                </div>
-                <div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">
-                  <span>\${fmtAmt(g.balance)} / \${fmtN(g.count)}건</span>
-                  <span>금리 <b style="color:#374151">\${gAvgR}%</b></span>
-                  \${gAvgLtv!==null?\`<span>LTV <b style="color:#374151">\${gAvgLtv}%</b></span>\`:''}
-                  <span>연체 <b style="color:\${gOdColor}">\${gOd10r}%</b></span>
-                </div>
-              </div>
-              <!-- 카테고리 리스트 -->
-              <table style="width:100%;border-collapse:collapse">
-                <tbody>\${catRows}</tbody>
-              </table>
-            </div>\`;
-          }).join('')}
-        </div>
-      </div>\`;
-    }).join('')}
-  </div>
-  \`:''}
+  \${buildAgentGroupBalanceCards(agGrpData,total)}
 
   <div class="card overflow-hidden">
     <div class="px-5 pt-5 pb-3 border-b border-gray-100">
