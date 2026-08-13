@@ -900,9 +900,14 @@ function aggregateByAgent() {
   const map = {};
   for(const r of LOAN.records){
     const a=r.a||'기타';
-    if(!map[a])map[a]={count:0,balance:0,rateWSum:0,rateBalSum:0,overdue30:0,bal30:0,bal10_:0,bal30_:0,bal60:0,bal90:0,balMore:0};
+    if(!map[a])map[a]={count:0,balance:0,rateWSum:0,rateBalSum:0,overdue30:0,bal30:0,bal10_:0,bal30_:0,bal60:0,bal90:0,balMore:0,grpBal:{}};
     map[a].count++;map[a].balance+=r.b;
     if(r.r>0&&r.b>0){map[a].rateWSum+=r.b*r.r;map[a].rateBalSum+=r.b;}
+    // 상품그룹별 잔고 누적
+    const _cat=getCategoryOfProduct(r.p);
+    const _grp=getGroupOfCategory(_cat.id);
+    if(!map[a].grpBal[_grp.id])map[a].grpBal[_grp.id]={name:_grp.name,color:_grp.color,balance:0};
+    map[a].grpBal[_grp.id].balance+=r.b;
     if(r.d===0){/* 정상 */}
     else if(r.d<=10){map[a].bal10_+=r.b;}
     else if(r.d<=30){map[a].bal30_+=r.b;}
@@ -2032,6 +2037,8 @@ function renderAgent(el) {
       <table class="data-table"><thead><tr>
         <th>#</th><th>에이전트</th><th>카테고리</th><th class="text-right">건수</th><th class="text-right">잔고</th>
         <th class="text-right">구성비</th><th class="text-right">평균금리</th>
+        <th class="text-right" style="color:#1e40af">담보 잔고</th><th class="text-right" style="color:#1e40af">담보 비중</th>
+        <th class="text-right" style="color:#065f46">신용 잔고</th><th class="text-right" style="color:#065f46">신용 비중</th>
         <th class="text-right">10일이상 연체금</th><th class="text-right">10일이상 연체율</th>
         <th class="text-right">30일초과(%)</th><th class="text-right">90일초과(%)</th>
       </tr></thead>
@@ -2053,6 +2060,10 @@ function renderAgent(el) {
           <td class="text-right font-semibold">\${fmtAmt(v.balance)}</td>
           <td class="text-right"><div class="flex items-center justify-end gap-2"><div class="progress-bar w-14"><div class="progress-fill" style="width:\${pct}%;background:\${cat.color}"></div></div><span>\${pct}%</span></div></td>
           <td class="text-right">\${avgR}%</td>
+          <td class="text-right font-semibold" style="color:#1e40af">\${fmtAmt(v.grpBal['g1']?.balance||0)}</td>
+          <td class="text-right text-xs text-blue-700">\${v.balance>0?((v.grpBal['g1']?.balance||0)/v.balance*100).toFixed(1)+'%':'-'}</td>
+          <td class="text-right font-semibold" style="color:#065f46">\${fmtAmt(v.grpBal['g2']?.balance||0)}</td>
+          <td class="text-right text-xs text-green-700">\${v.balance>0?((v.grpBal['g2']?.balance||0)/v.balance*100).toFixed(1)+'%':'-'}</td>
           <td class="text-right \${b10over>0?'text-orange-500 font-semibold':''}">\${b10over>0?fmtAmt(b10over):'-'}</td>
           <td class="text-right \${parseFloat(od10r)>=8?'text-red-600 font-bold':parseFloat(od10r)>=4?'text-orange-500':'text-green-600'}">\${od10r}%</td>
           <td class="text-right \${parseFloat(od30r)>=8?'text-red-600 font-bold':parseFloat(od30r)>=4?'text-orange-500':'text-green-600'}">\${od30r}%</td>
