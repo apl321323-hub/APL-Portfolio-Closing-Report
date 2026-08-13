@@ -2625,6 +2625,41 @@ function renderNewLoan(el) {
   });
   const catArr = Object.values(catMap).sort((a,b) => b.amt - a.amt);
 
+  // ── 상품 그룹(담보/신용)별 + 그룹 내 카테고리별 집계 (2번째 스크린샷 패널용)
+  const grpPanelMap = {};
+  GROUPS.forEach(g => {
+    grpPanelMap[g.id] = {
+      id: g.id, name: g.name, color: g.color,
+      count: 0, amt: 0, rWSum: 0, rBSum: 0, ltvW: 0, ltvApp: 0, bal10Over: 0,
+      cats: {}
+    };
+  });
+  recs.forEach(r => {
+    const cat  = getCategoryOfProduct(r.p || '기타');
+    const grp  = getGroupOfCategory(cat.id);
+    const gm   = grpPanelMap[grp.id];
+    if (!gm) return;
+    gm.count++; gm.amt += r.amt;
+    if (r.r > 0) { gm.rWSum += r.amt * r.r; gm.rBSum += r.amt; }
+    if (r.appraised > 0 && r.loanAmt > 0) { gm.ltvW += r.loanAmt; gm.ltvApp += r.appraised; }
+    if (!gm.cats[cat.id]) gm.cats[cat.id] = {
+      id: cat.id, name: cat.name, color: cat.color, order: cat.order || 99,
+      count: 0, amt: 0, rWSum: 0, rBSum: 0, ltvW: 0, ltvApp: 0
+    };
+    const cm = gm.cats[cat.id];
+    cm.count++; cm.amt += r.amt;
+    if (r.r > 0) { cm.rWSum += r.amt * r.r; cm.rBSum += r.amt; }
+    if (r.appraised > 0 && r.loanAmt > 0) { cm.ltvW += r.loanAmt; cm.ltvApp += r.appraised; }
+  });
+  // 사용된 그룹만, order 기준 정렬
+  const grpPanelArr = Object.values(grpPanelMap)
+    .filter(g => g.count > 0)
+    .sort((a,b) => {
+      const oi = GROUPS.findIndex(g=>g.id===a.id);
+      const oj = GROUPS.findIndex(g=>g.id===b.id);
+      return oi - oj;
+    });
+
   // ── 일별 집계
   const dayMap = {};
   recs.forEach(r => {
@@ -2718,12 +2753,77 @@ function renderNewLoan(el) {
     </div>
   </div>
 
-  <!-- 일별 실행 차트 + 카테고리 구성비 -->
+  <!-- 담보/신용 그룹별 구성 패널 + 카테고리 구성비 -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <div class="card p-5 lg:col-span-2">
-      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-green-500"></i>일별 신규 실행</h3>
-      <div class="chart-wrap-lg"><canvas id="nl-day-bar"></canvas></div>
+    <!-- 담보/신용 패널 (2/3) -->
+    <div class="card overflow-hidden lg:col-span-2">
+      <div style="display:grid;grid-template-columns:repeat(\${grpPanelArr.length},1fr)">
+        \${grpPanelArr.map((g,gi) => {
+          const gPct    = totalAmt > 0 ? (g.amt / totalAmt * 100) : 0;
+          const gAvgR   = g.rBSum > 0 ? (g.rWSum / g.rBSum).toFixed(2) : '-';
+          const gAvgLtv = g.ltvApp > 0 ? (g.ltvW / g.ltvApp * 100).toFixed(1) : null;
+          const borderR = gi < grpPanelArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
+
+          // 카테고리 행 (order 정렬)
+          const catRows = Object.values(g.cats)
+            .sort((a,b) => (a.order||99)-(b.order||99))
+            .map(c => {
+              const cPct  = totalAmt > 0 ? (c.amt / totalAmt * 100) : 0;
+              const cGpct = g.amt > 0 ? (c.amt / g.amt * 100) : 0;
+              const cAvgR = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
+              const cLtv  = c.ltvApp > 0 ? (c.ltvW / c.ltvApp * 100).toFixed(1) : null;
+              const ltvHtml = cLtv !== null
+                ? \`<div style="font-size:10px;color:#9ca3af">LTV <b style="color:#374151">\${cLtv}%</b></div>\`
+                : '';
+              return \`<tr style="border-top:1px solid #f3f4f6">
+                <td style="padding:7px 8px;width:12px">
+                  <div style="width:9px;height:9px;border-radius:50%;background:\${c.color}"></div>
+                </td>
+                <td style="padding:7px 4px;white-space:nowrap">
+                  <span style="font-size:12px;font-weight:700;color:#374151">\${c.name}</span>
+                </td>
+                <td style="padding:7px 4px;text-align:right">
+                  <span style="font-size:14px;font-weight:900;color:\${c.color}">\${cPct.toFixed(1)}%</span>
+                  <div style="font-size:10px;color:#9ca3af">그룹내 \${cGpct.toFixed(1)}%</div>
+                </td>
+                <td style="padding:7px 4px;text-align:right">
+                  <span style="font-size:12px;font-weight:600;color:#1f2937">\${fmtAmt(c.amt)}</span>
+                  <div style="font-size:10px;color:#9ca3af">\${fmtN(c.count)}건</div>
+                </td>
+                <td style="padding:7px 4px;text-align:right">
+                  <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${cAvgR}%</b></span>
+                  \${ltvHtml}
+                </td>
+              </tr>\`;
+            }).join('');
+
+          return \`<div style="\${borderR}">
+            <!-- 그룹 헤더 -->
+            <div style="background:\${g.color};padding:8px 14px;text-align:center">
+              <span style="color:#fff;font-size:13px;font-weight:700">\${g.name}</span>
+            </div>
+            <!-- 그룹 합계 행 -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px 7px;background:\${g.color}08;border-bottom:1px solid \${g.color}20">
+              <div style="display:flex;align-items:center;gap:5px">
+                <div style="width:9px;height:9px;border-radius:50%;background:\${g.color}"></div>
+                <span style="font-size:12px;font-weight:700;color:#374151">\${g.name}</span>
+                <span style="font-size:20px;font-weight:900;line-height:1;color:\${g.color}">\${gPct.toFixed(1)}%</span>
+              </div>
+              <div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">
+                <span>\${fmtAmt(g.amt)} / \${fmtN(g.count)}건</span>
+                <span>금리 <b style="color:#374151">\${gAvgR}%</b></span>
+                \${gAvgLtv ? \`<span>LTV <b style="color:#374151">\${gAvgLtv}%</b></span>\` : ''}
+              </div>
+            </div>
+            <!-- 카테고리 테이블 -->
+            <table style="width:100%;border-collapse:collapse">
+              <tbody>\${catRows}</tbody>
+            </table>
+          </div>\`;
+        }).join('')}
+      </div>
     </div>
+    <!-- 카테고리 구성비 파이 (1/3) -->
     <div class="card p-5">
       <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>카테고리 구성비</h3>
       <div style="height:200px"><canvas id="nl-cat-pie"></canvas></div>
@@ -2875,14 +2975,6 @@ function renderNewLoan(el) {
   // ── 차트 렌더링
   const NL_COLORS = ['#2563eb','#059669','#7c3aed','#d97706','#0891b2','#dc2626','#6366f1','#0d9488','#c026d3','#ea580c','#84cc16','#64748b','#be185d','#92400e','#1d4ed8','#15803d'];
   setTimeout(() => {
-    // 일별 실행 (막대 + 건수 라인)
-    mkBar('nl-day-bar', dayArr.map(([dt]) => dt.slice(5)), [
-      { label:'대출액(억)', data: dayArr.map(([,v]) => v.amt/100000000), backgroundColor:'#059669aa', yAxisID:'y' },
-      { label:'건수', data: dayArr.map(([,v]) => v.count), type:'line', borderColor:'#d97706', backgroundColor:'transparent', yAxisID:'y1', borderWidth:2, pointRadius:3 }
-    ], { extra:{ scales:{
-      y:  { ticks:{ callback: v => v.toFixed(1)+'억', font:{size:10} } },
-      y1: { type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'건', font:{size:10}} }
-    }}});
     // 카테고리 파이
     mkPie('nl-cat-pie', catArr.map(c=>c.name), catArr.map(c=>c.amt), catArr.map(c=>c.color));
     // 상품별 가로 막대
