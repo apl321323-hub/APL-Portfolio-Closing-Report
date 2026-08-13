@@ -1790,11 +1790,13 @@ function renderBalance(el) {
       const odRNum=parseFloat(odR);
       const odColor=odRNum>=8?'color:#dc2626':odRNum>=4?'color:#f97316':'color:#16a34a';
       // 카테고리 로우 항목
+      const isCollGrp=g.id==='g1';
       const catRows=g.cats.map(c=>{
         const cc=catMap[c.id]||c;
         const cpct=(cc.balance/total*100);
         const gpct=g.balance>0?(cc.balance/g.balance*100):0;
         const cr=cc.rateBalSum>0?(cc.rateWSum/cc.rateBalSum).toFixed(2):'-';
+        const avgLtv=isCollGrp&&cc.ltvAppSum>0?(cc.ltvWSum/cc.ltvAppSum*100).toFixed(1):null;
         const od30r=cc.balance>0?((cc.bal30Over||0)/cc.balance*100).toFixed(1):'0';
         const od30Num=parseFloat(od30r);
         const od30Style=od30Num>=8?'color:#dc2626;font-weight:700':od30Num>=4?'color:#f97316':'color:#16a34a';
@@ -1815,6 +1817,7 @@ function renderBalance(el) {
           </td>
           <td style="padding:6px 4px;text-align:right">
             <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\${cr}%</b></span>
+            \${avgLtv!==null?\`<div style="font-size:10px;color:#9ca3af">LTV <b style="color:#374151">\${avgLtv}%</b></div>\`:''}
           </td>
           <td style="padding:6px 8px;text-align:right">
             <span style="font-size:11px;\${od30Style}">연체 \${od30r}%</span>
