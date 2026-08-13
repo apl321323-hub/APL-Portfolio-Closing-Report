@@ -1026,13 +1026,15 @@ function aggregateByProductCatForAgent() {
     catMap[c.id] = {
       id: c.id, name: c.name, color: c.color, order: c.order||99,
       totalBalance: 0, totalCount: 0,
+      rateWSum: 0, rateBalSum: 0, bal10Over: 0,
       agents: {}  // aname -> {name,balance,count,rateWSum,rateBalSum,bal10Over}
     };
   }
   // 미분류
   catMap['__none__'] = {
     id:'__none__', name:'미분류', color:'#9ca3af', order:9999,
-    totalBalance: 0, totalCount: 0, agents: {}
+    totalBalance: 0, totalCount: 0,
+    rateWSum: 0, rateBalSum: 0, bal10Over: 0, agents: {}
   };
 
   for(const r of LOAN.records){
@@ -1041,6 +1043,8 @@ function aggregateByProductCatForAgent() {
     const cm    = catMap[pcat.id] || catMap['__none__'];
     cm.totalBalance += r.b;
     cm.totalCount++;
+    if(r.r>0&&r.b>0){ cm.rateWSum+=r.b*r.r; cm.rateBalSum+=r.b; }
+    if(r.d>10) cm.bal10Over+=r.b;
     if(!cm.agents[aname]) cm.agents[aname] = {name:aname,balance:0,count:0,rateWSum:0,rateBalSum:0,bal10Over:0};
     const am = cm.agents[aname];
     am.balance += r.b;
@@ -2502,6 +2506,10 @@ function renderAgent(el) {
               </td>
             </tr>\`;
           }).join('');
+          const cAvgR=c.rateBalSum>0?(c.rateWSum/c.rateBalSum).toFixed(2):'-';
+          const cOd10r=c.totalBalance>0?((c.bal10Over||0)/c.totalBalance*100).toFixed(1):'0';
+          const cOd10Num=parseFloat(cOd10r);
+          const cOdColor=cOd10Num>=8?'#dc2626':cOd10Num>=4?'#f97316':'#16a34a';
           return \`<div class="card" style="border-top:3px solid \${c.color};overflow:hidden">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;background:\${c.color}08">
               <div style="display:flex;align-items:center;gap:6px">
@@ -2509,8 +2517,10 @@ function renderAgent(el) {
                 <span style="font-size:13px;font-weight:700;color:#374151">\${c.name}</span>
                 <span style="font-size:22px;font-weight:900;line-height:1;color:\${c.color}">\${cpct.toFixed(1)}%</span>
               </div>
-              <div style="font-size:11px;color:#6b7280">
+              <div style="display:flex;gap:10px;font-size:11px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">
                 <span>\${fmtAmt(c.totalBalance)} / \${fmtN(c.totalCount)}건</span>
+                <span>금리 <b style="color:#374151">\${cAvgR}%</b></span>
+                <span>연체 <b style="color:\${cOdColor}">\${cOd10r}%</b></span>
               </div>
             </div>
             <table style="width:100%;border-collapse:collapse">
