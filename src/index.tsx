@@ -1882,6 +1882,12 @@ function renderBalance(el) {
       </tbody>
     </table>
   </div>
+  <!-- ── 상품별 잔고 현황 바 차트 ── -->
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2" style="color:#6366f1"></i>상품별 잔고 현황</h3>
+    <div class="chart-wrap-lg"><canvas id="bal-prod-bar"></canvas></div>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
     <div class="card p-5 lg:col-span-2">
       <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-2" style="color:#2563eb"></i>카테고리 구성비</h3>
@@ -1910,7 +1916,11 @@ function renderBalance(el) {
     </div>
   </div>
 </div>\`;
-  setTimeout(()=>{ mkPie('bal-pie',catData.map(c=>c.name),catData.map(c=>c.balance),catData.map(c=>c.color)); },50);
+  setTimeout(()=>{
+    mkPie('bal-pie',catData.map(c=>c.name),catData.map(c=>c.balance),catData.map(c=>c.color));
+    const pArr2=Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).slice(0,15);
+    mkBar('bal-prod-bar',pArr2.map(([p])=>p),[{label:'잔고',data:pArr2.map(([,v])=>v.balance/100000000),backgroundColor:pArr2.map(([p])=>getCategoryOfProduct(p).color+'cc')}],{extra:{scales:{y:{ticks:{callback:v=>v.toFixed(0)+'억',font:{size:10}},grid:{color:'#f3f4f6'}},x:{ticks:{font:{size:10}}}},plugins:{legend:{labels:{font:{size:11},boxWidth:12}}}}});
+  },50);
 }
 
 // ==================== 페이지: 상품 분석 ====================
