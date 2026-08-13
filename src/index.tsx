@@ -597,18 +597,37 @@ function augmentTrendFromStorage() {
     if (!loanData || !loanData.records) continue;
     const recs = loanData.records;
 
-    // ── loan_data가 있으면 항상 g1/g2 집계 → __creditByMonth/__collateralByMonth 갱신 ──
-    // (data.json에 이미 있는 월이라도 CATEGORIES/GROUPS 기준값으로 덮어씀)
-    const _creditAggPre  = {bal:0};
-    const _collAggPre    = {bal:0};
-    for (const r of recs) {
-      if (creditProds.includes(r.p)) _creditAggPre.bal += r.b||0;
-      if (collProds.includes(r.p))   _collAggPre.bal   += r.b||0;
+    // ── loan_data가 있으면 항상 CATEGORIES/GROUPS 기준으로 집계 → 월별 맵 갱신 ──
+    // (data.json에 이미 있는 월이라도 덮어씀)
+    const _creditBal = 0, _collBal = 0;
+    // 그룹 잔고 집계 (신용/담보 분리 차트용)
+    let _gCreditBal = 0, _gCollBal = 0;
+    // 카테고리별 잔고·신규 집계 (신규대출 차트용)
+    const _catBal = {}, _catNew = {};
+    for (const cat of catsNow) {
+      _catBal[cat.id] = 0;
+      _catNew[cat.id] = 0;
     }
-    if (!TREND.__creditByMonth)      TREND.__creditByMonth      = {};
-    if (!TREND.__collateralByMonth)  TREND.__collateralByMonth  = {};
-    TREND.__creditByMonth[label]     = parseFloat((_creditAggPre.bal/100000000).toFixed(2));
-    TREND.__collateralByMonth[label] = parseFloat((_collAggPre.bal/100000000).toFixed(2));
+    for (const r of recs) {
+      if (creditProds.includes(r.p)) _gCreditBal += r.b||0;
+      if (collProds.includes(r.p))   _gCollBal   += r.b||0;
+      // 카테고리별 집계
+      for (const cat of catsNow) {
+        if ((cat.products||[]).includes(r.p)) {
+          _catBal[cat.id] += r.b||0;
+          if (r.ct==='신규') _catNew[cat.id] += r.b||0;
+        }
+      }
+    }
+    if (!TREND.__creditByMonth)     TREND.__creditByMonth     = {};
+    if (!TREND.__collateralByMonth) TREND.__collateralByMonth = {};
+    if (!TREND.__newByCatMonth)     TREND.__newByCatMonth     = {};
+    TREND.__creditByMonth[label]     = parseFloat((_gCreditBal/100000000).toFixed(2));
+    TREND.__collateralByMonth[label] = parseFloat((_gCollBal/100000000).toFixed(2));
+    // 카테고리별 신규대출 저장: { '26.4월': { c1: 5.56, c2: 2.04, ... } }
+    const _catNewEntry = {};
+    for (const cat of catsNow) _catNewEntry[cat.id] = parseFloat((_catNew[cat.id]/100000000).toFixed(2));
+    TREND.__newByCatMonth[label] = _catNewEntry;
 
     // 이미 TREND에 있는 월은 total/products append 불필요 → 스킵
     if (TREND.months.includes(label)) continue;
@@ -1629,13 +1648,13 @@ function renderOverview(el) {
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div class="card p-5">
-      <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-bar mr-2 text-green-500"></i>신규대출 — 신용 상품별 <span class="text-xs font-normal text-gray-400 ml-1">(2026.1월~)</span></h3>
-      <p class="text-xs text-gray-400 mb-3">첨담보 · 차량 · 회생 · 신용</p>
+      <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-bar mr-2 text-green-500"></i>신규대출 — 신용 상품별 <span class="text-xs font-normal text-gray-400 ml-1">(결산자료 기준)</span></h3>
+      <p id="ov-nl-credit-sub" class="text-xs text-gray-400 mb-3"></p>
       <div class="chart-wrap-lg"><canvas id="ov-nl-credit"></canvas></div>
     </div>
     <div class="card p-5">
-      <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>신규대출 — 담보 상품별 <span class="text-xs font-normal text-gray-400 ml-1">(2026.1월~)</span></h3>
-      <p class="text-xs text-gray-400 mb-3">담보론(토마토토탈론) · 담보론(지분)(토마토토탈론플러스)</p>
+      <h3 class="text-sm font-bold text-gray-700 mb-1"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>신규대출 — 담보 상품별 <span class="text-xs font-normal text-gray-400 ml-1">(결산자료 기준)</span></h3>
+      <p id="ov-nl-collateral-sub" class="text-xs text-gray-400 mb-3"></p>
       <div class="chart-wrap-lg"><canvas id="ov-nl-collateral"></canvas></div>
     </div>
   </div>
@@ -1680,45 +1699,56 @@ function renderOverview(el) {
           if(el) el.innerHTML='<div class="flex items-center justify-center h-64 text-gray-400 text-sm">결산자료(loan_data) 없음 — 신용/담보 분리 불가</div>';
         }
 
-        // ── 신규대출 신용 상품별: 첨담보·차량·회생·신용 (months26All: loan_data 유무 무관) ─
-        // 신규대출은 data.json 기반이므로 필터링 없이 26.1월~전체 표시
-        const nlCreditNames  = ['첨담보','차량','회생','신용'];
-        const nlCreditColors = ['#2563eb','#7c3aed','#dc2626','#059669'];
-        mkLine('ov-nl-credit', months26All,
-          nlCreditNames.map((name,i)=>({
-            label: name+'(억)',
-            data:  months26All.map((mn)=>{
-              const absIdx = TREND.months.indexOf(mn);
-              const p = tProds.find(x=>x.name===name);
-              return p ? (p.new_loans[absIdx]?.amount||0) : 0;
-            }),
-            borderColor:     nlCreditColors[i],
-            backgroundColor: nlCreditColors[i]+'18',
-            fill: false
-          })),
-          {extra:{scales:{y:{ticks:{callback:v=>v.toFixed(1)+'억'}}}}}
+        // ── 신규대출: CATEGORIES/GROUPS 기준 (loan_data 있는 월만) ──────────
+        // __newByCatMonth가 있는 월만 사용 (없는 월은 표시 안 함)
+        const nlMonths = months26All.filter(mn =>
+          TREND.__newByCatMonth && TREND.__newByCatMonth[mn] !== undefined
         );
 
-        // ── 신규대출 담보 상품별: 담보론·담보론(지분) ────────────────
-        // data.json 상품명: 토마토토탈론(담보론), 토마토토탈론플러스(담보론-지분)
-        const nlCollDefs = [
-          {label:'담보론',        name:'토마토토탈론',        color:'#1e40af'},
-          {label:'담보론(지분)',  name:'토마토토탈론플러스',  color:'#0891b2'},
-        ];
-        mkLine('ov-nl-collateral', months26All,
-          nlCollDefs.map(d=>({
-            label: d.label+'(억)',
-            data:  months26All.map((mn)=>{
-              const absIdx = TREND.months.indexOf(mn);
-              const p = tProds.find(x=>x.name===d.name);
-              return p ? (p.new_loans[absIdx]?.amount||0) : 0;
-            }),
-            borderColor:     d.color,
-            backgroundColor: d.color+'18',
-            fill: false
-          })),
-          {extra:{scales:{y:{ticks:{callback:v=>v.toFixed(1)+'억'}}}}}
-        );
+        const catsNowR = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
+        const grpsNowR = (GROUPS && GROUPS.length > 0) ? GROUPS : DEFAULT_GROUPS;
+        const g2R = grpsNowR.find(g=>g.id==='g2') || {categoryIds:[]};
+        const g1R = grpsNowR.find(g=>g.id==='g1') || {categoryIds:[]};
+
+        // 카테고리 색상 팔레트
+        const CAT_COLORS = ['#2563eb','#7c3aed','#dc2626','#059669','#ea580c','#0891b2','#be185d','#65a30d'];
+
+        if(nlMonths.length > 0){
+          // 신용 그룹 카테고리별 신규대출
+          const g2Cats = catsNowR.filter(c=>g2R.categoryIds.includes(c.id));
+          const g1Cats = catsNowR.filter(c=>g1R.categoryIds.includes(c.id));
+          // subtitle 동적 업데이트
+          const subCredit = document.getElementById('ov-nl-credit-sub');
+          if(subCredit) subCredit.textContent = g2Cats.map(c=>c.name).join(' · ');
+          const subColl = document.getElementById('ov-nl-collateral-sub');
+          if(subColl) subColl.textContent = g1Cats.map(c=>c.name).join(' · ');
+          mkLine('ov-nl-credit', nlMonths,
+            g2Cats.map((cat,i)=>({
+              label: cat.name+'(억)',
+              data:  nlMonths.map(mn => TREND.__newByCatMonth[mn]?.[cat.id] || 0),
+              borderColor:     CAT_COLORS[i % CAT_COLORS.length],
+              backgroundColor: CAT_COLORS[i % CAT_COLORS.length]+'18',
+              fill: false
+            })),
+            {extra:{scales:{y:{ticks:{callback:v=>v.toFixed(1)+'억'}}}}}
+          );
+          // 담보 그룹 카테고리별 신규대출
+          mkLine('ov-nl-collateral', nlMonths,
+            g1Cats.map((cat,i)=>({
+              label: cat.name+'(억)',
+              data:  nlMonths.map(mn => TREND.__newByCatMonth[mn]?.[cat.id] || 0),
+              borderColor:     CAT_COLORS[(i+4) % CAT_COLORS.length],
+              backgroundColor: CAT_COLORS[(i+4) % CAT_COLORS.length]+'18',
+              fill: false
+            })),
+            {extra:{scales:{y:{ticks:{callback:v=>v.toFixed(1)+'억'}}}}}
+          );
+        } else {
+          ['ov-nl-credit','ov-nl-collateral'].forEach(id=>{
+            const e=document.getElementById(id);
+            if(e) e.innerHTML='<div class="flex items-center justify-center h-48 text-gray-400 text-sm">결산자료(loan_data) 없음</div>';
+          });
+        }
       }
     }
   },50);
