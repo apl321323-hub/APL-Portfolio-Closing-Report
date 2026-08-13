@@ -1841,7 +1841,7 @@ function renderBalance(el) {
         </table>
       </div>\`;
     }).join('')}
-  </div>\`:''}\n  </div>\`:''}\n\n  <!-- ── 카테고리(하위) 상세 테이블 ── -->
+  </div>\`:''}\n\n  <!-- ── 카테고리(하위) 상세 테이블 ── -->
   <div>
     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"><i class="fas fa-tags mr-1.5"></i>카테고리(하위) 상세</p>
   </div>
