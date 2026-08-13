@@ -1797,9 +1797,9 @@ function renderBalance(el) {
         const gpct=g.balance>0?(cc.balance/g.balance*100):0;
         const cr=cc.rateBalSum>0?(cc.rateWSum/cc.rateBalSum).toFixed(2):'-';
         const avgLtv=isCollGrp&&cc.ltvAppSum>0?(cc.ltvWSum/cc.ltvAppSum*100).toFixed(1):null;
-        const od30r=cc.balance>0?((cc.bal30Over||0)/cc.balance*100).toFixed(1):'0';
-        const od30Num=parseFloat(od30r);
-        const od30Style=od30Num>=8?'color:#dc2626;font-weight:700':od30Num>=4?'color:#f97316':'color:#16a34a';
+        const od10r=cc.balance>0?((cc.bal10Over||0)/cc.balance*100).toFixed(1):'0';
+        const od10Num=parseFloat(od10r);
+        const od10Style=od10Num>=8?'color:#dc2626;font-weight:700':od10Num>=4?'color:#f97316':'color:#16a34a';
         return \`<tr style="border-top:1px solid #f3f4f6">
           <td style="padding:6px 8px;width:10px">
             <div style="width:8px;height:8px;border-radius:50%;background:\${cc.color};flex-shrink:0"></div>
@@ -1820,7 +1820,7 @@ function renderBalance(el) {
             \${avgLtv!==null?\`<div style="font-size:10px;color:#9ca3af">LTV <b style="color:#374151">\${avgLtv}%</b></div>\`:''}
           </td>
           <td style="padding:6px 8px;text-align:right">
-            <span style="font-size:11px;\${od30Style}">연체 \${od30r}%</span>
+            <span style="font-size:11px;\${od10Style}">연체 \${od10r}%</span>
           </td>
         </tr>\`;
       }).join('');
