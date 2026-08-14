@@ -2951,11 +2951,7 @@ function renderNewLoan(el) {
     <!-- 상품 카테고리별 분류 -->
     <div class="mt-6">
       <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-tags mr-1.5 text-blue-400"></i>상품 카테고리별 구분</h4>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>
-          <div class="chart-wrap-sm"><canvas id="nl-rate-cat-bar"></canvas></div>
-        </div>
-        <div class="overflow-auto">
+      <div class="overflow-auto">
           <table class="data-table">
             <thead><tr>
               <th class="text-left">카테고리</th>
@@ -2984,18 +2980,13 @@ function renderNewLoan(el) {
               </tr>
             </tbody>
           </table>
-        </div>
       </div>
     </div>
 
     <!-- 에이전트 카테고리별 분류 -->
     <div class="mt-6">
       <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-user-tag mr-1.5 text-teal-400"></i>에이전트 카테고리별 구분</h4>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>
-          <div class="chart-wrap-sm"><canvas id="nl-rate-agentcat-bar"></canvas></div>
-        </div>
-        <div class="overflow-auto">
+      <div class="overflow-auto">
           <table class="data-table">
             <thead><tr>
               <th class="text-left">에이전트 카테고리</th>
@@ -3055,38 +3046,6 @@ function renderNewLoan(el) {
       y:  { ticks:{ callback:v=>v+'건', font:{size:10} } },
       y1: { type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'억', font:{size:10}} }
     }}});
-
-    // 금리구간 × 상품 카테고리 스택형 막대 (건수)
-    if(rateUsedCats.length > 0) {
-      mkBar('nl-rate-cat-bar', rateBands.map(b=>b.label),
-        rateUsedCats.map(c => ({
-          label: c.name,
-          data:  rateBands.map(b => b.byCat[c.id]?.count || 0),
-          backgroundColor: c.color + 'cc',
-          stack: 'cat'
-        })),
-        { extra:{ scales:{
-          x: { stacked:true },
-          y: { stacked:true, ticks:{ callback:v=>v+'건', font:{size:10} } }
-        }}}
-      );
-    }
-
-    // 금리구간 × 에이전트 카테고리 스택형 막대 (건수)
-    if(rateUsedAgentCats.length > 0) {
-      mkBar('nl-rate-agentcat-bar', rateBands.map(b=>b.label),
-        rateUsedAgentCats.map(c => ({
-          label: c.name,
-          data:  rateBands.map(b => b.byAgentCat[c.id]?.count || 0),
-          backgroundColor: c.color + 'cc',
-          stack: 'agc'
-        })),
-        { extra:{ scales:{
-          x: { stacked:true },
-          y: { stacked:true, ticks:{ callback:v=>v+'건', font:{size:10} } }
-        }}}
-      );
-    }
   }, 50);
 }
 
