@@ -196,7 +196,6 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-item" data-page="overdue-change" onclick="goPage('overdue-change')">
         <i class="sb-icon fas fa-exchange-alt"></i>
         <span class="sb-label">연체 변동 분석</span>
-        <span class="sb-updating">업데이트 중</span>
       </div>
       <div class="sb-item" data-page="realestate" onclick="goPage('realestate')">
         <i class="sb-icon fas fa-building"></i>
