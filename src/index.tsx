@@ -3178,6 +3178,49 @@ function selectNewLoanMonth(key) {
 // ── 연체 카테고리 구성 패널 상태 (선택 필터: 'all' | 'od10' | 'od30' | 'od90')
 let overdueFilterKey = 'all';
 
+// ── 그룹 패널 HTML 생성 (중첩 템플릿 리터럴 회피용 분리 함수)
+function _buildOdGrpPanelHtml(odGrpArr, filterBal) {
+  if(odGrpArr.length === 0) {
+    return '<div style="display:flex;align-items:center;justify-content:center;height:120px;color:#9ca3af;font-size:14px">해당 연체 건수 없음</div>';
+  }
+  const cols = odGrpArr.length;
+  let html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);height:100%">';
+  odGrpArr.forEach((gd, gi) => {
+    const gPct  = filterBal > 0 ? (gd.bal / filterBal * 100) : 0;
+    const gAvgR = gd.rBSum > 0 ? (gd.rWSum / gd.rBSum).toFixed(2) : '-';
+    const borderR = gi < odGrpArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
+    let catRows = '';
+    Object.values(gd.cats).sort((a,b)=>(a.order||99)-(b.order||99)).forEach(c => {
+      const cPct  = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
+      const cGpct = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
+      const cAvgR = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
+      catRows += '<tr style="border-top:1px solid #f3f4f6">'
+        + '<td style="padding:7px 8px;width:14px"><div style="width:9px;height:9px;border-radius:50%;background:' + c.color + '"></div></td>'
+        + '<td style="padding:7px 4px;white-space:nowrap"><span style="font-size:12px;font-weight:700;color:#374151">' + c.name + '</span></td>'
+        + '<td style="padding:7px 4px;text-align:right"><span style="font-size:14px;font-weight:900;color:' + c.color + '">' + cPct.toFixed(1) + '%</span><div style="font-size:10px;color:#9ca3af">그룹내 ' + cGpct.toFixed(1) + '%</div></td>'
+        + '<td style="padding:7px 4px;text-align:right"><span style="font-size:12px;font-weight:600;color:#1f2937">' + fmtAmt(c.bal) + '</span><div style="font-size:10px;color:#9ca3af">' + fmtN(c.count) + '건</div></td>'
+        + '<td style="padding:7px 4px;text-align:right"><span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">' + cAvgR + '%</b></span></td>'
+        + '</tr>';
+    });
+    html += '<div style="' + borderR + '">'
+      + '<div style="background:' + gd.color + ';padding:8px 14px;text-align:center"><span style="color:#fff;font-size:13px;font-weight:700">' + gd.name + '</span></div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px 7px;background:' + gd.color + '08;border-bottom:1px solid ' + gd.color + '20">'
+      +   '<div style="display:flex;align-items:center;gap:5px">'
+      +     '<div style="width:9px;height:9px;border-radius:50%;background:' + gd.color + '"></div>'
+      +     '<span style="font-size:20px;font-weight:900;line-height:1;color:' + gd.color + '">' + gPct.toFixed(1) + '%</span>'
+      +   '</div>'
+      +   '<div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">'
+      +     '<span>' + fmtAmt(gd.bal) + ' / ' + fmtN(gd.count) + '건</span>'
+      +     '<span>금리 <b style="color:#374151">' + gAvgR + '%</b></span>'
+      +   '</div>'
+      + '</div>'
+      + '<table style="width:100%;border-collapse:collapse"><tbody>' + catRows + '</tbody></table>'
+      + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
 function renderOverdue(el) {
   const all = LOAN.records;
   const totalBal = all.reduce((s,r)=>s+r.b, 0);
@@ -3355,58 +3398,7 @@ function renderOverdue(el) {
 
       <!-- 담보/신용 그룹 패널 (2/3) -->
       <div class="lg:col-span-2 overflow-hidden">
-        \${filterRecs.length === 0
-          ? \`<div class="flex items-center justify-center h-40 text-gray-400 text-sm">해당 연체 건수 없음</div>\`
-          : \`<div style="display:grid;grid-template-columns:repeat(\${odGrpArr.length},1fr);height:100%">
-              \${odGrpArr.map((gd, gi) => {
-                const gPct   = filterBal > 0 ? (gd.bal / filterBal * 100) : 0;
-                const gAvgR  = gd.rBSum > 0 ? (gd.rWSum / gd.rBSum).toFixed(2) : '-';
-                const borderR = gi < odGrpArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
-                const catRows = Object.values(gd.cats)
-                  .sort((a,b)=>(a.order||99)-(b.order||99))
-                  .map(c => {
-                    const cPct  = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
-                    const cGpct = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
-                    const cAvgR = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
-                    return \\\`<tr style="border-top:1px solid #f3f4f6">
-                      <td style="padding:7px 8px;width:14px">
-                        <div style="width:9px;height:9px;border-radius:50%;background:\\\${c.color}"></div>
-                      </td>
-                      <td style="padding:7px 4px;white-space:nowrap">
-                        <span style="font-size:12px;font-weight:700;color:#374151">\\\${c.name}</span>
-                      </td>
-                      <td style="padding:7px 4px;text-align:right">
-                        <span style="font-size:14px;font-weight:900;color:\\\${c.color}">\\\${cPct.toFixed(1)}%</span>
-                        <div style="font-size:10px;color:#9ca3af">그룹내 \\\${cGpct.toFixed(1)}%</div>
-                      </td>
-                      <td style="padding:7px 4px;text-align:right">
-                        <span style="font-size:12px;font-weight:600;color:#1f2937">\\\${fmtAmt(c.bal)}</span>
-                        <div style="font-size:10px;color:#9ca3af">\\\${fmtN(c.count)}건</div>
-                      </td>
-                      <td style="padding:7px 4px;text-align:right">
-                        <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\\\${cAvgR}%</b></span>
-                      </td>
-                    </tr>\\\`;
-                  }).join('');
-                return \\\`<div style="\\\${borderR}">
-                  <div style="background:\\\${gd.color};padding:8px 14px;text-align:center">
-                    <span style="color:#fff;font-size:13px;font-weight:700">\\\${gd.name}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px 7px;background:\\\${gd.color}08;border-bottom:1px solid \\\${gd.color}20">
-                    <div style="display:flex;align-items:center;gap:5px">
-                      <div style="width:9px;height:9px;border-radius:50%;background:\\\${gd.color}"></div>
-                      <span style="font-size:20px;font-weight:900;line-height:1;color:\\\${gd.color}">\\\${gPct.toFixed(1)}%</span>
-                    </div>
-                    <div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">
-                      <span>\\\${fmtAmt(gd.bal)} / \\\${fmtN(gd.count)}건</span>
-                      <span>금리 <b style="color:#374151">\\\${gAvgR}%</b></span>
-                    </div>
-                  </div>
-                  <table style="width:100%;border-collapse:collapse"><tbody>\\\${catRows}</tbody></table>
-                </div>\\\`;
-              }).join('')}
-            </div>\`
-        }
+        \${ _buildOdGrpPanelHtml(odGrpArr, filterBal) }
       </div>
     </div>
   </div>
