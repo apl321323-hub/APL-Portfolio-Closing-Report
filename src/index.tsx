@@ -3176,48 +3176,189 @@ function selectNewLoanMonth(key) {
 
 // ==================== 페이지: 연체 현황 ====================
 function renderOverdue(el) {
-  const r0=LOAN.records.filter(r=>r.d===0);
-  const r10=LOAN.records.filter(r=>r.d>0&&r.d<=10);
-  const r30=LOAN.records.filter(r=>r.d>10&&r.d<=30);
-  const r60=LOAN.records.filter(r=>r.d>30&&r.d<=60);
-  const r90=LOAN.records.filter(r=>r.d>60&&r.d<=90);
-  const rMore=LOAN.records.filter(r=>r.d>90);
-  const bands=[{label:'정상(0일)',data:r0,color:'#059669'},{label:'1~10일',data:r10,color:'#84cc16'},{label:'11~30일',data:r30,color:'#f97316'},{label:'31~60일',data:r60,color:'#ef4444'},{label:'61~90일',data:r90,color:'#b91c1c'},{label:'90일 초과',data:rMore,color:'#7f1d1d'}];
+  const all = LOAN.records;
+  const totalBal = all.reduce((s,r)=>s+r.b, 0);
+
+  // ── 구간별 레코드
+  const seg = {
+    r0:   all.filter(r=>r.d===0),
+    r10:  all.filter(r=>r.d>=1  && r.d<=10),
+    r30:  all.filter(r=>r.d>=11 && r.d<=30),
+    r60:  all.filter(r=>r.d>=31 && r.d<=60),
+    r90:  all.filter(r=>r.d>=61 && r.d<=90),
+    r120: all.filter(r=>r.d>=91 && r.d<=120),
+    r180: all.filter(r=>r.d>=121&& r.d<=180),
+    rInf: all.filter(r=>r.d>180),
+  };
+  // 집계 헬퍼
+  const S = arr => ({ cnt: arr.length, amt: arr.reduce((s,r)=>s+r.b,0) });
+  const g = {};
+  for(const k in seg) g[k] = S(seg[k]);
+
+  // 카드별 상위 합계 (구성비 분모 = 전체잔고)
+  const card1 = g.r0;                                                     // 정상
+  const card2 = { cnt: g.r30.cnt+g.r60.cnt+g.r90.cnt+g.r120.cnt+g.r180.cnt+g.rInf.cnt,
+                   amt: g.r30.amt+g.r60.amt+g.r90.amt+g.r120.amt+g.r180.amt+g.rInf.amt };  // 10일 초과
+  const card3 = { cnt: g.r60.cnt+g.r90.cnt+g.r120.cnt+g.r180.cnt+g.rInf.cnt,
+                   amt: g.r60.amt+g.r90.amt+g.r120.amt+g.r180.amt+g.rInf.amt };            // 30일 초과
+  const card4 = { cnt: g.r120.cnt+g.r180.cnt+g.rInf.cnt,
+                   amt: g.r120.amt+g.r180.amt+g.rInf.amt };                                // 90일 초과
+
+  const pct = (amt) => totalBal > 0 ? (amt/totalBal*100).toFixed(1)+'%' : '-';
+
+  // ── 서브행 렌더러: 라벨 / 레코드집계 / 색상
+  const subRow = (label, gk, col) => {
+    const d = g[gk];
+    if(!d || d.cnt===0) return '';
+    return \`<div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+      <span class="text-xs text-gray-500 font-medium">\${label}</span>
+      <div class="text-right">
+        <span class="text-xs font-bold" style="color:\${col}">\${fmtAmt(d.amt)}</span>
+        <span class="text-xs text-gray-400 ml-1.5">\${fmtN(d.cnt)}건</span>
+        <span class="text-xs ml-1" style="color:\${col}">\${pct(d.amt)}</span>
+      </div>
+    </div>\`;
+  };
+
+  // ── 카드 렌더러
+  const mkCard = (title, badge, iconCls, mainColor, bgColor, mainData, subHtml) => {
+    const amtPct = pct(mainData.amt);
+    return \`
+    <div class="kpi-card p-5 flex flex-col">
+      <!-- 헤더 -->
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:\${bgColor}">
+            <i class="\${iconCls}" style="color:\${mainColor}"></i>
+          </div>
+          <span class="text-sm font-bold text-gray-700">\${title}</span>
+        </div>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:\${bgColor};color:\${mainColor}">\${badge}</span>
+      </div>
+      <!-- 메인 지표: 금액·구성비 강조 -->
+      <div class="mb-1">
+        <p class="text-2xl font-black tracking-tight" style="color:\${mainColor}">\${fmtAmt(mainData.amt)}</p>
+        <div class="flex items-baseline gap-2 mt-0.5">
+          <span class="text-lg font-bold" style="color:\${mainColor}">\${amtPct}</span>
+          <span class="text-xs text-gray-400">(\${fmtN(mainData.cnt)}건)</span>
+        </div>
+      </div>
+      <!-- 서브 구간 -->
+      <div class="mt-auto">\${subHtml}</div>
+    </div>\`;
+  };
+
   const pMap=aggregateByProduct();
+
   el.innerHTML=\`
 <div class="space-y-5">
   <h2 class="text-lg font-bold">연체 현황</h2>
-  <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
-    \${bands.map(b=>{const amt=b.data.reduce((s,r)=>s+r.b,0);const pct=(b.data.length/LOAN.records.length*100).toFixed(1);
-    return\`<div class="kpi-card p-4"><div class="flex items-center gap-2 mb-2"><div class="w-3 h-3 rounded-full" style="background:\${b.color}"></div><span class="text-sm font-bold text-gray-700">\${b.label}</span></div>
-    <p class="text-xl font-bold" style="color:\${b.color}">\${fmtN(b.data.length)}건</p>
-    <p class="text-xs text-gray-500">\${fmtAmt(amt)} · \${pct}%</p></div>\`;}).join('')}
+
+  <!-- KPI 4카드 -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+
+    <!-- 1. 정상 -->
+    \${mkCard('정상(0일)', '정상', 'fas fa-check-circle', '#059669', '#f0fdf4',
+      card1,
+      subRow('1~10일', 'r10', '#65a30d')
+    )}
+
+    <!-- 2. 10일 초과 -->
+    \${mkCard('10일 초과', '주의', 'fas fa-exclamation-circle', '#d97706', '#fff7ed',
+      card2,
+      subRow('11~30일', 'r30', '#f97316')
+    )}
+
+    <!-- 3. 30일 초과 -->
+    \${mkCard('30일 초과', '경고', 'fas fa-triangle-exclamation', '#dc2626', '#fef2f2',
+      card3,
+      subRow('31~60일', 'r60', '#ef4444') +
+      subRow('61~90일', 'r90', '#b91c1c')
+    )}
+
+    <!-- 4. 90일 초과 -->
+    \${mkCard('90일 초과', '위험', 'fas fa-skull-crossbones', '#7c2d12', '#fdf4ff',
+      card4,
+      subRow('91~120일',  'r120', '#9333ea') +
+      subRow('121~180일', 'r180', '#7e22ce') +
+      subRow('180일 초과','rInf', '#581c87')
+    )}
+
   </div>
+
+  <!-- 차트 & 추이 -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="card p-5"><h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-red-500"></i>연체 구간별 현황</h3><div class="chart-wrap-lg"><canvas id="od-bar"></canvas></div></div>
+    <div class="card p-5">
+      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-red-500"></i>연체 구간별 잔고 현황</h3>
+      <div class="chart-wrap-lg"><canvas id="od-bar"></canvas></div>
+    </div>
     \${TREND?\`<div class="card p-5"><h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-line mr-2 text-orange-500"></i>월별 연체율 추이</h3><div class="chart-wrap-lg"><canvas id="od-trend"></canvas></div></div>\`:''}
   </div>
+
+  <!-- 상품별 연체 현황 테이블 -->
   <div class="card p-5">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-red-500"></i>상품별 연체 현황</h3>
     <div class="overflow-auto">
-      <table class="data-table"><thead><tr><th>상품</th><th>전체건수</th><th>연체건수</th><th>연체율</th><th>31~60일</th><th>61~90일</th><th>90일↑</th><th>연체잔고</th></tr></thead>
-      <tbody>\${Object.entries(pMap).sort((a,b)=>(b[1].overdue30+b[1].overdue60+b[1].overdue90+b[1].overdueMore)/(b[1].count||1)-(a[1].overdue30+a[1].overdue60+a[1].overdue90+a[1].overdueMore)/(a[1].count||1)).map(([p,v])=>{
-        const odCnt=v.overdue30+v.overdue60+v.overdue90+v.overdueMore;const odR=(odCnt/v.count*100).toFixed(1);const odAmt=v.bal30;
-        return\`<tr><td class="font-medium">\${p}</td><td>\${fmtN(v.count)}</td><td class="text-orange-500 font-medium">\${fmtN(odCnt)}</td>
-        <td class="\${parseFloat(odR)>=10?'text-red-600 font-bold':parseFloat(odR)>=5?'text-orange-500 font-bold':''}">\${odR}%</td>
-        <td>\${fmtN(v.overdue60)}</td><td>\${fmtN(v.overdue90)}</td><td class="text-red-600 font-bold">\${fmtN(v.overdueMore)}</td><td>\${fmtAmt(odAmt)}</td></tr>\`;}).join('')}
-      </tbody></table>
+      <table class="data-table">
+        <thead><tr>
+          <th>상품</th>
+          <th class="text-right">전체잔고</th>
+          <th class="text-right">연체잔고<br><span class="font-normal">(10일↑)</span></th>
+          <th class="text-right">연체율<br><span class="font-normal">(잔고기준)</span></th>
+          <th class="text-right">30일↑<br>잔고</th>
+          <th class="text-right">90일↑<br>잔고</th>
+          <th class="text-right">건수</th>
+        </tr></thead>
+        <tbody>\${Object.entries(pMap)
+          .sort((a,b)=>(b[1].bal10+b[1].bal30_+b[1].bal60+b[1].bal90+b[1].balMore)-(a[1].bal10+a[1].bal30_+a[1].bal60+a[1].bal90+a[1].balMore))
+          .map(([p,v])=>{
+            const totalAmt = v.bal0+v.bal10+v.bal30_+v.bal60+v.bal90+(v.balMore||0);
+            const odAmt    = v.bal10+v.bal30_+v.bal60+v.bal90+(v.balMore||0);
+            const od30Amt  = v.bal30_+v.bal60+v.bal90+(v.balMore||0);
+            const od90Amt  = v.balMore||0;
+            const odCnt    = v.overdue10+v.overdue30+v.overdue60+v.overdue90+(v.overdueMore||0);
+            const odR      = totalAmt>0 ? (odAmt/totalAmt*100).toFixed(1) : '0';
+            return \`<tr>
+              <td class="font-medium">\${p}</td>
+              <td class="text-right">\${fmtAmt(totalAmt)}</td>
+              <td class="text-right font-bold" style="color:#d97706">\${fmtAmt(odAmt)}</td>
+              <td class="text-right font-bold \${parseFloat(odR)>=10?'text-red-600':parseFloat(odR)>=5?'text-orange-500':''}">\${odR}%</td>
+              <td class="text-right text-red-500">\${fmtAmt(od30Amt)}</td>
+              <td class="text-right font-bold text-red-700">\${fmtAmt(od90Amt)}</td>
+              <td class="text-right text-gray-400">\${fmtN(v.count)}</td>
+            </tr>\`;
+          }).join('')}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>\`;
+
+  // ── 차트
+  const barBands = [
+    {label:'정상(0일)', amt:g.r0.amt,   cnt:g.r0.cnt,   color:'#059669'},
+    {label:'1~10일',    amt:g.r10.amt,  cnt:g.r10.cnt,  color:'#84cc16'},
+    {label:'11~30일',   amt:g.r30.amt,  cnt:g.r30.cnt,  color:'#f97316'},
+    {label:'31~60일',   amt:g.r60.amt,  cnt:g.r60.cnt,  color:'#ef4444'},
+    {label:'61~90일',   amt:g.r90.amt,  cnt:g.r90.cnt,  color:'#b91c1c'},
+    {label:'91~120일',  amt:g.r120.amt, cnt:g.r120.cnt, color:'#9333ea'},
+    {label:'121~180일', amt:g.r180.amt, cnt:g.r180.cnt, color:'#7e22ce'},
+    {label:'180일↑',    amt:g.rInf.amt, cnt:g.rInf.cnt, color:'#581c87'},
+  ];
   setTimeout(()=>{
-    mkBar('od-bar',bands.map(b=>b.label),[
-      {label:'건수',data:bands.map(b=>b.data.length),backgroundColor:bands.map(b=>b.color+'cc'),yAxisID:'y'},
-      {label:'잔고(억)',data:bands.map(b=>b.data.reduce((s,r)=>s+r.b,0)/100000000),backgroundColor:bands.map(b=>b.color+'44'),yAxisID:'y1',type:'line',borderColor:bands.map(b=>b.color)}
-    ],{extra:{scales:{y:{ticks:{callback:v=>v+'건'}},y1:{type:'linear',position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>v.toFixed(0)+'억'}}}}});
-    if(TREND)mkLine('od-trend',TREND.months,[
-      {label:'10일연체율',data:TREND.total.overdue.map(o=>o.rate_10),borderColor:'#f97316',borderDash:[4,2]},
-      {label:'30일연체율',data:TREND.total.overdue.map(o=>o.rate_30),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.08)',fill:true}
+    mkBar('od-bar', barBands.map(b=>b.label), [
+      {label:'잔고(억)', data:barBands.map(b=>+(b.amt/100000000).toFixed(2)),
+       backgroundColor:barBands.map(b=>b.color+'cc'), yAxisID:'y'},
+      {label:'건수', data:barBands.map(b=>b.cnt),
+       backgroundColor:barBands.map(b=>b.color+'33'),
+       type:'line', borderColor:barBands.map(b=>b.color), yAxisID:'y1'}
+    ],{extra:{scales:{
+      y:{ticks:{callback:v=>v.toFixed(1)+'억'}},
+      y1:{type:'linear',position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>v+'건'}}
+    }}});
+    if(TREND) mkLine('od-trend', TREND.months,[
+      {label:'10일연체율', data:TREND.total.overdue.map(o=>o.rate_10), borderColor:'#f97316', borderDash:[4,2]},
+      {label:'30일연체율', data:TREND.total.overdue.map(o=>o.rate_30), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.08)', fill:true}
     ],{pct:true});
   },50);
 }
