@@ -3289,21 +3289,26 @@ function renderOverdue(el) {
           amt: gp.r120.amt+gp.r180.amt+gp.rInf.amt },
   } : null;
 
-  // 증감 뱃지 생성 (금액 + 증감률)
+  const prevTotalBal = prevAll ? prevAll.reduce((s,r)=>s+r.b,0) : 0;
+
+  // 증감 뱃지: 금액 증감 + %p (구성비율 차이)
   const diffBadge = (curr, prev, invertColor) => {
     if (!prev) return '';
-    const dAmt = curr.amt - prev.amt;
-    if (dAmt === 0) return '<div style="font-size:11px;color:#9ca3af;margin-top:4px">─ 전월 동일</div>';
-    const dPct  = prev.amt > 0 ? (dAmt / prev.amt * 100) : 0;
+    const dAmt  = curr.amt - prev.amt;
+    const currPct = totalBal    > 0 ? curr.amt / totalBal    * 100 : 0;
+    const prevPct = prevTotalBal > 0 ? prev.amt / prevTotalBal * 100 : 0;
+    const dPp   = currPct - prevPct;  // %p 차이
+    if (dAmt === 0 && Math.abs(dPp) < 0.01) return '<div style="font-size:11px;color:#9ca3af;margin-top:4px">─ 전월 동일</div>';
     const isUp  = dAmt > 0;
     const color = invertColor
-      ? (isUp ? '#059669' : '#dc2626')   // 정상: 증가=초록, 감소=빨강
-      : (isUp ? '#dc2626' : '#059669');  // 연체: 증가=빨강, 감소=초록
+      ? (isUp ? '#059669' : '#dc2626')
+      : (isUp ? '#dc2626' : '#059669');
     const arrow = isUp ? '▲' : '▼';
     const sign  = isUp ? '+' : '';
+    const ppSign = dPp >= 0 ? '+' : '';
     return '<div style="font-size:11px;color:'+color+';margin-top:4px;display:flex;align-items:center;gap:4px">'
       + '<span>'+arrow+' '+sign+fmtAmt(Math.abs(dAmt))+'</span>'
-      + '<span style="opacity:0.75">('+sign+dPct.toFixed(1)+'%)</span>'
+      + '<span style="opacity:0.8">('+ppSign+dPp.toFixed(2)+'%p)</span>'
       + '<span style="color:#9ca3af;font-size:10px">전월대비</span>'
       + '</div>';
   };
