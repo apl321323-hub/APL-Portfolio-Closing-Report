@@ -3676,7 +3676,7 @@ function renderOcResult() {
 
   // ── 신규연체: 전월 d≤10이었는데 당월 d>10
   const newOdList = [];   // { cno, p, a, prevD, currD, currB }
-  // ── 연체해소: 전월 d>10이었는데 당월 d=0
+  // ── 연체해소: 전월 d>10이었는데 당월 d≤10
   const resolvedList = []; // { cno, p, a, prevD, currD, prevB, currB }
   // ── 지속연체: 전월 d>10이고 당월도 d>10
   const continuedList = [];
@@ -3693,7 +3693,7 @@ function renderOcResult() {
     const pd = p.d || 0, cd = c.d || 0;
     if (pd <= 10 && cd > 10) {
       newOdList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, currB: c.b||0, prevB: p.b||0 });
-    } else if (pd > 10 && cd === 0) {
+    } else if (pd > 10 && cd <= 10) {
       resolvedList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, prevB: p.b||0, currB: c.b||0 });
     } else if (pd > 10 && cd > 10) {
       continuedList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, prevB: p.b||0, currB: c.b||0 });
@@ -3748,7 +3748,7 @@ function renderOcResult() {
         return '<span style="color:#dc2626;font-weight:600">'+d+'일</span>';
       };
       const arrow = type==='resolved'
-        ? '<span style="color:#dc2626">'+r.prevD+'일</span> → <span style="color:#10b981;font-weight:700">정상</span>'
+        ? '<span style="color:#dc2626">'+r.prevD+'일</span> → '+(r.currD===0 ? '<span style="color:#10b981;font-weight:700">정상</span>' : '<span style="color:#6b7280">'+r.currD+'일</span>')
         : type==='new'
           ? '<span style="color:#6b7280">'+(r.prevD||0)+'일</span> → <span style="color:#dc2626;font-weight:700">'+r.currD+'일</span>'
           : dBadge(r.prevD)+' → '+dBadge(r.currD);
@@ -3825,7 +3825,7 @@ function renderOcResult() {
     + '</div>'
     // 연체해소
     + '<div class="bg-white rounded-xl border border-emerald-200 p-4">'
-    + '<div class="text-xs text-emerald-600 mb-1 font-medium">연체 해소 (정상 전환)</div>'
+    + '<div class="text-xs text-emerald-600 mb-1 font-medium">연체 해소 (d≤10 전환)</div>'
     + '<div style="font-size:22px;font-weight:800;color:#10b981">' + fmtN(resolvedList.length) + '건</div>'
     + '<div class="text-xs text-gray-500 mt-1">' + fmtAmt(resolvedBal) + ' / 해소율 <strong>' + resolveRate + '%</strong></div>'
     + '</div>'
@@ -3903,7 +3903,7 @@ function ocTab(tab) {
   if (tab==='new')
     area.innerHTML = mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626', sortCol, sortDir);
   else if(tab==='resolved')
-    area.innerHTML = mkTable('연체 해소 - 정상 전환 (전월 d>10 → 당월 d=0)', resolvedList, 'resolved', '#10b981', sortCol, sortDir);
+    area.innerHTML = mkTable('연체 해소 (전월 d>10 → 당월 d≤10)', resolvedList, 'resolved', '#10b981', sortCol, sortDir);
   else
     area.innerHTML = mkTable('지속 연체 (전월 d>10 → 당월 d>10)', continuedList, 'continued', '#ea580c', sortCol, sortDir);
 }
