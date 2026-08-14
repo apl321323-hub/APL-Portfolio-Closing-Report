@@ -823,7 +823,7 @@ function goPage(page) {
 function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
-  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan') {
+  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change') {
     el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
       <i class="fas fa-cloud-upload-alt text-5xl text-blue-200"></i>
       <p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>
