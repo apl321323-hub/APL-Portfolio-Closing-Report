@@ -3713,10 +3713,10 @@ function renderOcResult() {
 
   // 신규연체율 = 신규연체 잔고 / 전월 전체 잔고
   const newOdRate    = prevTotal > 0 ? (newOdBal/prevTotal*100).toFixed(2) : '0.00';
-  // 해소율 = 해소 잔고 / 전월 전체 잔고
-  const resolveRate  = prevTotal > 0 ? (resolvedBal/prevTotal*100).toFixed(2) : '0.00';
-  // 잔존율 = 지속연체 잔고 / 전월 전체 잔고
-  const continueRate = prevTotal > 0 ? (continuedBal/prevTotal*100).toFixed(2) : '0.00';
+  // 해소율 = 해소 잔고 / 전월 d>10 연체 잔고
+  const resolveRate  = prevOdBal > 0 ? (resolvedBal/prevOdBal*100).toFixed(1) : '0.0';
+  // 잔존율 = 지속연체 잔고 / 전월 d>10 연체 잔고
+  const continueRate = prevOdBal > 0 ? (continuedBal/prevOdBal*100).toFixed(1) : '0.0';
 
   const matchedCnt = Object.keys(prevMap).filter(k=>currMap[k]).length;
   const totalPrevCno = Object.keys(prevMap).length;
