@@ -3179,39 +3179,58 @@ function selectNewLoanMonth(key) {
 let overdueFilterKey = 'all';
 
 // ── 그룹 패널 HTML 생성 (중첩 템플릿 리터럴 회피용 분리 함수)
-function _buildOdGrpPanelHtml(odGrpArr, filterBal) {
+function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap) {
   if(odGrpArr.length === 0) {
     return '<div style="display:flex;align-items:center;justify-content:center;height:120px;color:#9ca3af;font-size:14px">해당 연체 건수 없음</div>';
   }
+  // 연체율 색상 헬퍼
+  const odRateColor = (r) => r >= 10 ? '#dc2626' : r >= 3 ? '#d97706' : '#6b7280';
+
   const cols = odGrpArr.length;
   let html = '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);height:100%">';
   odGrpArr.forEach((gd, gi) => {
-    const gPct  = filterBal > 0 ? (gd.bal / filterBal * 100) : 0;
-    const gAvgR = gd.rBSum > 0 ? (gd.rWSum / gd.rBSum).toFixed(2) : '-';
-    const borderR = gi < odGrpArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
+    const gPct     = filterBal > 0 ? (gd.bal / filterBal * 100) : 0;
+    const gAvgR    = gd.rBSum > 0 ? (gd.rWSum / gd.rBSum).toFixed(2) : '-';
+    const borderR  = gi < odGrpArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
+    // 그룹 연체율 = 필터잔고(그룹) / 전체잔고(그룹)
+    const gTotBal  = totalGrpBalMap ? (totalGrpBalMap[gd.id] || 0) : 0;
+    const gOdRate  = gTotBal > 0 ? (gd.bal / gTotBal * 100) : 0;
+    const gOdColor = odRateColor(gOdRate);
+
     let catRows = '';
     Object.values(gd.cats).sort((a,b)=>(a.order||99)-(b.order||99)).forEach(c => {
-      const cPct  = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
-      const cGpct = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
-      const cAvgR = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
+      const cPct    = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
+      const cGpct   = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
+      const cAvgR   = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
+      // 카테고리 연체율 = 필터잔고(카테고리) / 전체잔고(카테고리)
+      const cTotBal = totalCatBalMap ? (totalCatBalMap[c.id] || 0) : 0;
+      const cOdRate = cTotBal > 0 ? (c.bal / cTotBal * 100) : 0;
+      const cOdColor = odRateColor(cOdRate);
+      const odLabel = cTotBal > 0 ? cOdRate.toFixed(1) + '%' : '-';
+
       catRows += '<tr style="border-top:1px solid #f3f4f6">'
         + '<td style="padding:7px 8px;width:14px"><div style="width:9px;height:9px;border-radius:50%;background:' + c.color + '"></div></td>'
         + '<td style="padding:7px 4px;white-space:nowrap"><span style="font-size:12px;font-weight:700;color:#374151">' + c.name + '</span></td>'
         + '<td style="padding:7px 4px;text-align:right"><span style="font-size:14px;font-weight:900;color:' + c.color + '">' + cPct.toFixed(1) + '%</span><div style="font-size:10px;color:#9ca3af">그룹내 ' + cGpct.toFixed(1) + '%</div></td>'
         + '<td style="padding:7px 4px;text-align:right"><span style="font-size:12px;font-weight:600;color:#1f2937">' + fmtAmt(c.bal) + '</span><div style="font-size:10px;color:#9ca3af">' + fmtN(c.count) + '건</div></td>'
         + '<td style="padding:7px 4px;text-align:right"><span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">' + cAvgR + '%</b></span></td>'
+        + '<td style="padding:7px 6px;text-align:right;min-width:52px"><span style="font-size:12px;font-weight:700;color:' + cOdColor + '">' + odLabel + '</span><div style="font-size:10px;color:#9ca3af">연체율</div></td>'
         + '</tr>';
     });
+
     html += '<div style="' + borderR + '">'
+      // 그룹 헤더
       + '<div style="background:' + gd.color + ';padding:8px 14px;text-align:center"><span style="color:#fff;font-size:13px;font-weight:700">' + gd.name + '</span></div>'
+      // 그룹 합계행
       + '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px 7px;background:' + gd.color + '08;border-bottom:1px solid ' + gd.color + '20">'
       +   '<div style="display:flex;align-items:center;gap:5px">'
       +     '<div style="width:9px;height:9px;border-radius:50%;background:' + gd.color + '"></div>'
       +     '<span style="font-size:20px;font-weight:900;line-height:1;color:' + gd.color + '">' + gPct.toFixed(1) + '%</span>'
       +   '</div>'
-      +   '<div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">'
+      +   '<div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end;align-items:center">'
       +     '<span>' + fmtAmt(gd.bal) + ' / ' + fmtN(gd.count) + '건</span>'
       +     '<span>금리 <b style="color:#374151">' + gAvgR + '%</b></span>'
+      +     (gTotBal > 0 ? '<span style="background:#f3f4f6;border-radius:4px;padding:1px 5px">연체율 <b style="color:' + gOdColor + '">' + gOdRate.toFixed(1) + '%</b></span>' : '')
       +   '</div>'
       + '</div>'
       + '<table style="width:100%;border-collapse:collapse"><tbody>' + catRows + '</tbody></table>'
@@ -3299,6 +3318,22 @@ function renderOverdue(el) {
                    : all;
   const filterBal = filterRecs.reduce((s,r)=>s+r.b, 0);
 
+  // ── 전체 레코드 기준 카테고리별 총잔고 집계 (연체율 분모)
+  const totalCatBalMap = {};
+  all.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '');
+    if(!totalCatBalMap[cat.id]) totalCatBalMap[cat.id] = 0;
+    totalCatBalMap[cat.id] += r.b;
+  });
+  // 전체 기준 그룹별 총잔고
+  const totalGrpBalMap = {};
+  all.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '');
+    const grp = getGroupOfCategory(cat.id);
+    if(!totalGrpBalMap[grp.id]) totalGrpBalMap[grp.id] = 0;
+    totalGrpBalMap[grp.id] += r.b;
+  });
+
   // ── 카테고리 집계 (파이차트용)
   const odCatMap = {};
   CATEGORIES.forEach(c => { odCatMap[c.id] = {...c, count:0, bal:0}; });
@@ -3385,20 +3420,25 @@ function renderOverdue(el) {
         <div style="height:190px"><canvas id="od-cat-pie"></canvas></div>
         <div class="mt-3 space-y-1.5">
           \${odCatArr.map(c => {
-            const cp = filterBal>0 ? (c.bal/filterBal*100).toFixed(1) : '0.0';
+            const cp      = filterBal>0 ? (c.bal/filterBal*100).toFixed(1) : '0.0';
+            const catTotBal = totalCatBalMap[c.id] || 0;
+            const odRate  = catTotBal>0 ? (c.bal/catTotBal*100).toFixed(1) : null;
+            const odColor = odRate && parseFloat(odRate)>=10 ? '#dc2626' : odRate && parseFloat(odRate)>=3 ? '#d97706' : '#6b7280';
             return \`<div class="flex items-center gap-2 text-xs">
               <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
               <span class="flex-1 truncate text-gray-600">\${c.name}</span>
               <span class="font-bold" style="color:\${c.color}">\${cp}%</span>
               <span class="text-gray-400">\${fmtAmt(c.bal)}</span>
+              \${odRate !== null ? \`<span class="font-bold" style="color:\${odColor};min-width:38px;text-align:right">\${odRate}%</span>\` : ''}
             </div>\`;
           }).join('')}
+          <div class="mt-2 pt-2 border-t border-gray-100 flex justify-end text-xs text-gray-400">연체율</div>
         </div>
       </div>
 
       <!-- 담보/신용 그룹 패널 (2/3) -->
       <div class="lg:col-span-2 overflow-hidden">
-        \${ _buildOdGrpPanelHtml(odGrpArr, filterBal) }
+        \${ _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap) }
       </div>
     </div>
   </div>
