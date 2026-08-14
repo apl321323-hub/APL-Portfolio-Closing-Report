@@ -41,6 +41,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
 .sb-item .sb-label{overflow:hidden;text-overflow:ellipsis;}
 .sb-badge{margin-left:auto;background:rgba(255,255,255,.2);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;flex-shrink:0;}
 .sb-wip{margin-left:auto;background:#f59e0b;color:#1a1a1a;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;flex-shrink:0;letter-spacing:.3px;}
+.sb-updating{margin-left:auto;background:#3b82f6;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;flex-shrink:0;letter-spacing:.3px;}
 .sb-divider{border-top:1px solid rgba(255,255,255,.08);margin:8px 14px;}
 
 /* 월 셀렉터 (사이드바 하단) */
@@ -190,14 +191,17 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-item" data-page="overdue" onclick="goPage('overdue')">
         <i class="sb-icon fas fa-exclamation-triangle"></i>
         <span class="sb-label">연체 현황</span>
+        <span class="sb-updating">업데이트 중</span>
       </div>
       <div class="sb-item" data-page="overdue-change" onclick="goPage('overdue-change')">
         <i class="sb-icon fas fa-exchange-alt"></i>
         <span class="sb-label">연체 변동 분석</span>
+        <span class="sb-updating">업데이트 중</span>
       </div>
       <div class="sb-item" data-page="realestate" onclick="goPage('realestate')">
         <i class="sb-icon fas fa-building"></i>
         <span class="sb-label">부동산 현황</span>
+        <span class="sb-updating">업데이트 중</span>
       </div>
       <div class="sb-item" data-page="trend" onclick="goPage('trend')">
         <i class="sb-icon fas fa-chart-line"></i>
