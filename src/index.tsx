@@ -2948,10 +2948,13 @@ function renderNewLoan(el) {
     </div>
     <div class="chart-wrap"><canvas id="nl-rate-bar"></canvas></div>
 
-    <!-- 상품 카테고리별 분류 -->
-    <div class="mt-6">
-      <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-tags mr-1.5 text-blue-400"></i>상품 카테고리별 구분</h4>
-      <div class="overflow-auto">
+    <!-- 상품 카테고리 / 에이전트 카테고리 좌우 배치 -->
+    <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+      <!-- 상품 카테고리별 분류 -->
+      <div>
+        <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-tags mr-1.5 text-blue-400"></i>상품 카테고리별 구분</h4>
+        <div class="overflow-auto">
           <table class="data-table">
             <thead><tr>
               <th class="text-left">카테고리</th>
@@ -2980,13 +2983,13 @@ function renderNewLoan(el) {
               </tr>
             </tbody>
           </table>
+        </div>
       </div>
-    </div>
 
-    <!-- 에이전트 카테고리별 분류 -->
-    <div class="mt-6">
-      <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-user-tag mr-1.5 text-teal-400"></i>에이전트 카테고리별 구분</h4>
-      <div class="overflow-auto">
+      <!-- 에이전트 카테고리별 분류 -->
+      <div>
+        <h4 class="text-xs font-bold text-gray-600 mb-3"><i class="fas fa-user-tag mr-1.5 text-teal-400"></i>에이전트 카테고리별 구분</h4>
+        <div class="overflow-auto">
           <table class="data-table">
             <thead><tr>
               <th class="text-left">에이전트 카테고리</th>
@@ -3017,6 +3020,7 @@ function renderNewLoan(el) {
           </table>
         </div>
       </div>
+
     </div>
   </div>
 
