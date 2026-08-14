@@ -3563,23 +3563,12 @@ function setOverdueFilter(key) {
 
 // ==================== 페이지: 연체 변동 분석 ====================
 function renderOverdueChange(el) {
-  // ── 로드된 결산자료 목록 수집
-  const months = [];
-  try {
-    const keys = Object.keys(localStorage).filter(k => k.startsWith('loan_'));
-    keys.sort();
-    keys.forEach(k => {
-      const raw = localStorage.getItem(k);
-      if (!raw) return;
-      const obj = JSON.parse(raw);
-      if (obj && obj.records && obj.base_date) months.push({ key: k, base_date: obj.base_date, records: obj.records });
-    });
-  } catch(e) {}
-  // 현재 LOAN도 포함 (중복 제거)
-  if (LOAN && LOAN.base_date && !months.find(m => m.base_date === LOAN.base_date)) {
-    months.push({ key: 'current', base_date: LOAN.base_date, records: LOAN.records || [] });
-  }
-  months.sort((a,b) => a.base_date.localeCompare(b.base_date));
+  // ── getMonthsDB()로 올바르게 읽기 (apl_months_v1 키 사용)
+  const db = getMonthsDB();
+  const months = Object.entries(db)
+    .filter(([,v]) => v && v.records && v.base_date)
+    .map(([k, v]) => ({ key: k, base_date: v.base_date, records: v.records }))
+    .sort((a,b) => a.base_date.localeCompare(b.base_date));
 
   const hasCno = months.length > 0 && months[0].records.length > 0 && months[0].records[0].cno !== undefined;
 
@@ -3661,26 +3650,15 @@ function renderOcResult() {
   const resEl  = document.getElementById('oc-result');
   if (!resEl || !prevYm || !currYm || prevYm === currYm) return;
 
-  // 두 월의 레코드 수집
+  // ── getMonthsDB()로 올바르게 읽기
   let prevRecs = [], currRecs = [];
-  try {
-    const keys = Object.keys(localStorage).filter(k => k.startsWith('loan_'));
-    keys.forEach(k => {
-      const raw = localStorage.getItem(k);
-      if (!raw) return;
-      const obj = JSON.parse(raw);
-      if (!obj || !obj.base_date || !obj.records) return;
-      const ym = obj.base_date.slice(0,7);
-      if (ym === prevYm) prevRecs = obj.records;
-      if (ym === currYm) currRecs = obj.records;
-    });
-  } catch(e) {}
-  // LOAN 현재 데이터도 확인
-  if (LOAN && LOAN.base_date) {
-    const ym = LOAN.base_date.slice(0,7);
-    if (ym === prevYm && prevRecs.length === 0) prevRecs = LOAN.records || [];
-    if (ym === currYm && currRecs.length === 0) currRecs = LOAN.records || [];
-  }
+  const db = getMonthsDB();
+  Object.values(db).forEach(v => {
+    if (!v || !v.base_date || !v.records) return;
+    const ym = v.base_date.slice(0,7);
+    if (ym === prevYm) prevRecs = v.records;
+    if (ym === currYm) currRecs = v.records;
+  });
 
   if (prevRecs.length === 0 || currRecs.length === 0) {
     resEl.innerHTML = '<div class="text-center py-8 text-gray-400">선택한 월의 데이터를 찾을 수 없습니다</div>';
