@@ -3100,16 +3100,16 @@ function renderNewLoan(el) {
                   \${rateBands.map(b => {
                     const d = b.byCat[c.id] || {count:0,amt:0};
                     return d.count > 0
-                      ? \`<td><b>\${fmtN(d.count)}건</b><br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(d.amt)}</span></td>\`
+                      ? \`<td><b>\${fmtAmt(d.amt)}</b><br><span class="text-gray-400" style="font-size:10px">\${fmtN(d.count)}건</span></td>\`
                       : \`<td class="text-gray-300">-</td>\`;
                   }).join('')}
-                  <td class="font-semibold">\${fmtN(rowTotal)}건<br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(rowAmt)}</span></td>
+                  <td class="font-semibold">\${fmtAmt(rowAmt)}<br><span class="text-gray-400" style="font-size:10px">\${fmtN(rowTotal)}건</span></td>
                 </tr>\`;
               }).join('')}
               <tr class="font-bold bg-gray-50">
                 <td>합계</td>
-                \${rateBands.map(b => \`<td>\${fmtN(b.count)}건<br><span style="font-size:10px;color:#6b7280">\${fmtAmt(b.amt)}</span></td>\`).join('')}
-                <td>\${fmtN(totalCount)}건</td>
+                \${rateBands.map(b => \`<td><b>\${fmtAmt(b.amt)}</b><br><span style="font-size:10px;color:#6b7280">\${fmtN(b.count)}건</span></td>\`).join('')}
+                <td><b>\${fmtAmt(rateBands.reduce((s,b)=>s+b.amt,0))}</b><br><span style="font-size:10px;color:#6b7280">\${fmtN(totalCount)}건</span></td>
               </tr>
             </tbody>
           </table>
@@ -3135,16 +3135,16 @@ function renderNewLoan(el) {
                   \${rateBands.map(b => {
                     const d = b.byAgentCat[c.id] || {count:0,amt:0};
                     return d.count > 0
-                      ? \`<td><b>\${fmtN(d.count)}건</b><br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(d.amt)}</span></td>\`
+                      ? \`<td><b>\${fmtAmt(d.amt)}</b><br><span class="text-gray-400" style="font-size:10px">\${fmtN(d.count)}건</span></td>\`
                       : \`<td class="text-gray-300">-</td>\`;
                   }).join('')}
-                  <td class="font-semibold">\${fmtN(rowTotal)}건<br><span class="text-gray-400" style="font-size:10px">\${fmtAmt(rowAmt)}</span></td>
+                  <td class="font-semibold">\${fmtAmt(rowAmt)}<br><span class="text-gray-400" style="font-size:10px">\${fmtN(rowTotal)}건</span></td>
                 </tr>\`;
               }).join('')}
               <tr class="font-bold bg-gray-50">
                 <td>합계</td>
-                \${rateBands.map(b => \`<td>\${fmtN(b.count)}건<br><span style="font-size:10px;color:#6b7280">\${fmtAmt(b.amt)}</span></td>\`).join('')}
-                <td>\${fmtN(totalCount)}건</td>
+                \${rateBands.map(b => \`<td><b>\${fmtAmt(b.amt)}</b><br><span style="font-size:10px;color:#6b7280">\${fmtN(b.count)}건</span></td>\`).join('')}
+                <td><b>\${fmtAmt(rateBands.reduce((s,b)=>s+b.amt,0))}</b><br><span style="font-size:10px;color:#6b7280">\${fmtN(totalCount)}건</span></td>
               </tr>
             </tbody>
           </table>
