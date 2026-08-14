@@ -3776,7 +3776,7 @@ function renderOcResult() {
   function mkTable(title, list, type, accentColor) {
     return '<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">'
       + '<div style="padding:14px 18px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">'
-      + '<span style="font-size:14px;font-weight:700;color:'+accentColor+'"><i class="fas '+(type==='new'?'fa-arrow-up-right-dots':'type'==='resolved'?'fa-check-circle':'fa-clock')+' mr-1.5"></i>'+title+'</span>'
+      + '<span style="font-size:14px;font-weight:700;color:'+accentColor+'"><i class="fas '+(type==='new'?'fa-arrow-up-right-dots':type==='resolved'?'fa-check-circle':'fa-clock')+' mr-1.5"></i>'+title+'</span>'
       + '<span style="font-size:12px;color:#6b7280">'+fmtN(list.length)+'건 / '+fmtAmt(list.reduce((s,r)=>s+(type==="resolved"?r.prevB:r.currB),0))+'</span>'
       + '</div>'
       + '<div style="overflow-x:auto">'
@@ -3835,10 +3835,10 @@ function renderOcResult() {
     + '<span class="ml-auto text-gray-400">' + prevYm + ' → ' + currYm + '</span>'
     + '</div>'
     // ── 탭
-    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    + '<button id="oct-new" class="tab-btn active" onclick="ocTab(\'new\')">🔴 신규연체 '+fmtN(newOdList.length)+'건</button>'
-    + '<button id="oct-resolved" class="tab-btn" onclick="ocTab(\'resolved\')">✅ 연체해소 '+fmtN(resolvedList.length)+'건</button>'
-    + '<button id="oct-continued" class="tab-btn" onclick="ocTab(\'continued\')">⚠️ 지속연체 '+fmtN(continuedList.length)+'건</button>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap" id="oc-tabs">'
+    + '<button id="oct-new" class="tab-btn active" data-tab="new">🔴 신규연체 '+fmtN(newOdList.length)+'건</button>'
+    + '<button id="oct-resolved" class="tab-btn" data-tab="resolved">✅ 연체해소 '+fmtN(resolvedList.length)+'건</button>'
+    + '<button id="oct-continued" class="tab-btn" data-tab="continued">⚠️ 지속연체 '+fmtN(continuedList.length)+'건</button>'
     + '</div>'
     // ── 테이블 영역
     + '<div id="oc-table-area">'
@@ -3848,6 +3848,16 @@ function renderOcResult() {
 
   // 탭 전환 함수 (클로저로 저장)
   window._ocData = { newOdList, resolvedList, continuedList, mkTable };
+
+  // data-tab 버튼에 이벤트 연결 (onclick 인라인 따옴표 충돌 회피)
+  setTimeout(() => {
+    const tabsEl = document.getElementById('oc-tabs');
+    if (tabsEl) {
+      tabsEl.querySelectorAll('[data-tab]').forEach(btn => {
+        btn.addEventListener('click', () => ocTab(btn.getAttribute('data-tab')));
+      });
+    }
+  }, 0);
 }
 
 function ocTab(tab) {
