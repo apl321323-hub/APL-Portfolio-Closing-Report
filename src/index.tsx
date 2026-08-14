@@ -379,14 +379,10 @@ let TREND = null;      // data.json 월별 추이
 let currentPage = 'overview';
 let pendingParsed = null;       // 결산자료 파싱 대기
 let pendingContract = null;     // 계약리스트 파싱 대기
-let REALESTATE = null;          // 부동산 담보 현황 데이터
-
 // ── 결산자료 스토리지
 const DB_KEY = 'apl_months_v1';
 // ── 계약리스트 스토리지
 const CONTRACT_DB_KEY = 'apl_contracts_v1';
-// ── 부동산 스토리지
-const RE_KEY = 'apl_realestate_v1';
 
 // ==================== 카테고리 / 그룹 설정 ====================
 const DEFAULT_CATEGORIES = [
@@ -3997,499 +3993,243 @@ function ocTab(tab) {
 }
 
 // ==================== 페이지: 부동산 현황 ====================
-function getReDB() {
-  try { return JSON.parse(localStorage.getItem(RE_KEY) || '{}'); } catch(e){ return {}; }
-}
-function saveReDB(db) {
-  localStorage.setItem(RE_KEY, JSON.stringify(db));
-}
-
-// 엑셀 파싱: 부동산 담보 현황 데이터
-function parseRealestateExcel(data) {
-  // data: { baseDate, loanType('담보론'|'담보론(지분대출)'), rows }
-  // rows: [{ region, colType, colAmts }] 형태로 미리 정제된 구조
-  return data;
-}
-
-// LTV 구간 레이블
-const LTV_BANDS = [
-  { key: 'ltv60',  label: '60%↓',  color: '#2563eb' },
-  { key: 'ltv65',  label: '61~65%', color: '#0891b2' },
-  { key: 'ltv75',  label: '66~75%', color: '#059669' },
-  { key: 'ltv80',  label: '76~80%', color: '#d97706' },
-  { key: 'ltv85',  label: '81~85%', color: '#dc2626' },
-  { key: 'ltv85p', label: '85%↑',  color: '#7c3aed' },
+// ── 지역(cla) → 그룹 매핑
+const RE_REGION_MAP = {
+  '서울':'서울,경기','경기':'서울,경기','인천':'서울,경기',
+  '부산':'광역시','대구':'광역시','광주':'광역시','대전':'광역시','울산':'광역시','세종':'광역시',
+  '경상':'지방','경남':'지방','경북':'지방',
+  '전라':'지방','전남':'지방','전북':'지방',
+  '충청':'지방','충남':'지방','충북':'지방','강원':'지방',
+  '제주':'제주',
+};
+const RE_REGIONS_ORDER  = ['서울,경기','광역시','지방','제주'];
+const RE_COLTYPES_ORDER = ['아파트','빌라,맨션','단독주택','다세대','토지','오피스텔','상가'];
+const RE_REGION_COLORS  = {'서울,경기':'#2563eb','광역시':'#059669','지방':'#d97706','제주':'#7c3aed'};
+const RE_COLTYPE_COLORS = {'아파트':'#2563eb','빌라,맨션':'#0891b2','단독주택':'#059669','다세대':'#d97706','토지':'#ea580c','오피스텔':'#7c3aed','상가':'#dc2626'};
+const RE_LTV_BANDS = [
+  {key:'ltv60', label:'60%↓',  color:'#2563eb', test:v=>v>0&&v<=60},
+  {key:'ltv65', label:'61~65%',color:'#0891b2', test:v=>v>60&&v<=65},
+  {key:'ltv75', label:'66~75%',color:'#059669', test:v=>v>65&&v<=75},
+  {key:'ltv80', label:'76~80%',color:'#d97706', test:v=>v>75&&v<=80},
+  {key:'ltv85', label:'81~85%',color:'#dc2626', test:v=>v>80&&v<=85},
+  {key:'ltv85p',label:'85%↑', color:'#7c3aed', test:v=>v>85},
 ];
-const REGIONS_ORDER = ['서울,경기','광역시','지방','제주'];
-const COLTYPES_ORDER = ['아파트','빌라,맨션','단독주택','다세대','토지','오피스텔','상가'];
-const REGION_COLORS = { '서울,경기':'#2563eb','광역시':'#059669','지방':'#d97706','제주':'#7c3aed' };
-const COLTYPE_COLORS = { '아파트':'#2563eb','빌라,맨션':'#0891b2','단독주택':'#059669','다세대':'#d97706','토지':'#ea580c','오피스텔':'#7c3aed','상가':'#dc2626' };
+
+// 단위: 원 → 천만원 표시
+function fmtChun(v) {
+  if (!v) return '-';
+  const c = Math.round(v / 10000000);
+  if (c === 0) return '-';
+  return c.toLocaleString() + '천만';
+}
+function fmtReCnt(v) { return v ? v.toLocaleString() + '건' : '-'; }
+function fmtRePct(v, t) { return t > 0 ? (v / t * 100).toFixed(1) + '%' : '-'; }
+
+// 집계 함수
+function calcRealestateStats(records, loanTypeName) {
+  const filtered = records.filter(r => r.p === loanTypeName && r.clt);
+  const isOd = r => (r.d||0) > 10;
+  const zero = () => ({cnt:0, bal:0});
+  const zeroBands = () => {
+    const o = {total:zero()};
+    RE_LTV_BANDS.forEach(b => o[b.key]=zero());
+    return o;
+  };
+  const addTo = (slot, r) => { slot.cnt++; slot.bal += (r.b||0); };
+  const addBand = (bands, r) => {
+    addTo(bands.total, r);
+    const ltv = r.ltv || 0;
+    RE_LTV_BANDS.forEach(b => { if(b.test(ltv)) addTo(bands[b.key], r); });
+  };
+  const summary = { all: zeroBands(), od: zeroBands(), nonOd: zeroBands() };
+  const byRegion = {}, byColtype = {}, byRC = {};
+  filtered.forEach(r => {
+    const grp = RE_REGION_MAP[r.cla] || '기타';
+    const ct  = r.clt || '';
+    const od  = isOd(r);
+    const key = grp + '|' + ct;
+    addBand(summary.all, r);
+    if (od) addBand(summary.od, r); else addBand(summary.nonOd, r);
+    if (!byRegion[grp]) byRegion[grp] = {all:zeroBands(),od:zeroBands(),nonOd:zeroBands()};
+    addBand(byRegion[grp].all, r);
+    if (od) addBand(byRegion[grp].od, r); else addBand(byRegion[grp].nonOd, r);
+    if (!byColtype[ct]) byColtype[ct] = {all:zeroBands(),od:zeroBands(),nonOd:zeroBands()};
+    addBand(byColtype[ct].all, r);
+    if (od) addBand(byColtype[ct].od, r); else addBand(byColtype[ct].nonOd, r);
+    if (!byRC[key]) byRC[key] = {grp,ct,all:zeroBands(),od:zeroBands(),nonOd:zeroBands()};
+    addBand(byRC[key].all, r);
+    if (od) addBand(byRC[key].od, r); else addBand(byRC[key].nonOd, r);
+  });
+  return { summary, byRegion, byColtype, byRC };
+}
 
 function renderRealestate(el) {
-  const db = getReDB();
-  const entries = Object.values(db).sort((a,b)=>b.baseDate.localeCompare(a.baseDate));
-  const latest = entries[0] || null;
-
-  // ── 파일 없을 때 안내 UI
-  const noDataHtml = \`
-<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
-  <i class="fas fa-building text-5xl text-blue-200"></i>
-  <p class="text-lg font-medium text-gray-500">부동산 담보 현황 데이터가 없습니다</p>
-  <p class="text-sm text-gray-400">엑셀 파일(담보.xlsx)을 업로드하여 LTV·지역·담보종류별 현황을 분석하세요</p>
-  <button onclick="document.getElementById('re-file-input').click()" class="mt-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
-    <i class="fas fa-file-excel mr-2"></i>엑셀 파일 업로드
-  </button>
-</div>\`;
-
-  if (!latest) {
-    el.innerHTML = \`<div class="space-y-4">
-  <div class="flex items-center justify-between">
-    <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-building mr-2 text-blue-500"></i>부동산 현황</h2>
-    <label class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 cursor-pointer">
-      <i class="fas fa-file-excel mr-2"></i>엑셀 업로드
-      <input type="file" id="re-file-input" accept=".xlsx,.xls" style="display:none" onchange="reUpload(event)">
-    </label>
-  </div>
-  \${noDataHtml}
-</div>\`;
+  const db = getMonthsDB();
+  const entries = Object.values(db).filter(v=>v&&v.base_date&&v.records)
+                    .sort((a,b)=>b.base_date.localeCompare(a.base_date));
+  if (!entries.length) {
+    el.innerHTML = '<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">'
+      + '<i class="fas fa-building text-5xl text-blue-200"></i>'
+      + '<p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>'
+      + '<p class="text-sm">결산자료를 업로드하면 담보론 부동산 현황이 자동으로 표시됩니다</p>'
+      + '<button onclick="goPage('upload')" class="mt-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">'
+      + '<i class="fas fa-upload mr-2"></i>결산자료 업로드</button></div>';
     return;
   }
-
-  // ── 데이터가 있을 때
-  const dateList = entries.map(e=>e.baseDate);
-  const selDate = window._reSelDate || dateList[0];
-  if (!window._reSelDate) window._reSelDate = dateList[0];
-  const reSelLoanType = window._reLoanType || 'loan';
-  const reSelView    = window._reView    || 'region';  // 'region' | 'coltype'
-
+  const dateList = entries.map(e=>e.base_date);
+  if (!window._reSelDate || !db[window._reSelDate]) window._reSelDate = dateList[0];
+  const selDate = window._reSelDate;
   const dataset = db[selDate];
-  if (!dataset) { el.innerHTML='<div class="text-gray-400 p-8">선택한 날짜의 데이터가 없습니다</div>'; return; }
-
-  // ── 담보론 / 담보론(지분대출) 선택
-  const loanTypes = ['loan','loanShare'];
-  const ltLabel = { loan:'담보론', loanShare:'담보론(지분대출)' };
-  const tableData = reSelLoanType === 'loan' ? dataset.loan : dataset.loanShare;
-
-  // ── KPI 계산 (전체/연체/미연체)
-  const totalAmt   = tableData?.total?.all  || 0;
-  const odAmt      = tableData?.total?.od   || 0;
-  const nonOdAmt   = tableData?.total?.nonOd|| 0;
-  const odRate     = totalAmt>0 ? (odAmt/totalAmt*100).toFixed(2) : '0.00';
-
-  // ── LTV 구간별 합계 (전체)
-  const ltvAll = LTV_BANDS.map(b => ({
-    ...b, amt: tableData?.ltvBands?.[b.key]?.all || 0,
-    odAmt: tableData?.ltvBands?.[b.key]?.od || 0,
-    nonOdAmt: tableData?.ltvBands?.[b.key]?.nonOd || 0,
-  }));
-  const ltvUsed = ltvAll.filter(b=>b.amt>0);
-
-  // ── 지역별 합계
-  const regionRows = REGIONS_ORDER.map(r => {
-    const rd = tableData?.byRegion?.[r];
-    return { region:r, all: rd?.all||0, od: rd?.od||0, nonOd: rd?.nonOd||0,
-      ltvBands: LTV_BANDS.map(b=>({ ...b, amt: rd?.ltvBands?.[b.key]?.all||0 }))
-    };
-  }).filter(r=>r.all>0);
-
-  // ── 담보종류별 합계
-  const coltypeRows = COLTYPES_ORDER.map(ct => {
-    const cd = tableData?.byColtype?.[ct];
-    return { ct, all: cd?.all||0, od: cd?.od||0, nonOd: cd?.nonOd||0,
-      ltvBands: LTV_BANDS.map(b=>({ ...b, amt: cd?.ltvBands?.[b.key]?.all||0 }))
-    };
-  }).filter(r=>r.all>0);
-
-  // ── 지역×담보종류 상세 테이블
+  if (!dataset) { el.innerHTML='<div class="text-gray-400 p-8">데이터 없음</div>'; return; }
+  const reSelLoanType = window._reLoanType || 'loan';
+  const LT = { loan:'담보론', loanShare:'담보론(지분대출)' };
+  const loanTypeName = LT[reSelLoanType];
+  const stats = calcRealestateStats(dataset.records, loanTypeName);
+  const S = stats.summary;
+  const totalBal = S.all.total.bal, totalCnt = S.all.total.cnt;
+  const odBal    = S.od.total.bal,  odCnt    = S.od.total.cnt;
+  const nonOdBal = S.nonOd.total.bal, nonOdCnt = S.nonOd.total.cnt;
+  const odRate   = totalBal>0 ? (odBal/totalBal*100).toFixed(2) : '0.00';
+  const ltv85pBal= S.all.ltv85p.bal;
+  const ltvUsed  = RE_LTV_BANDS.filter(b => S.all[b.key].bal > 0);
+  const regionRows = RE_REGIONS_ORDER.map(grp => {
+    const d = stats.byRegion[grp]; if(!d) return null;
+    return {grp, all:d.all, od:d.od, nonOd:d.nonOd};
+  }).filter(Boolean).filter(r=>r.all.total.bal>0);
+  const coltypeRows = RE_COLTYPES_ORDER.map(ct => {
+    const d = stats.byColtype[ct]; if(!d) return null;
+    return {ct, all:d.all, od:d.od, nonOd:d.nonOd};
+  }).filter(Boolean).filter(r=>r.all.total.bal>0);
   const detailRows = [];
-  REGIONS_ORDER.forEach(r => {
-    COLTYPES_ORDER.forEach(ct => {
-      const rd = tableData?.byRegionColtype?.[r]?.[ct];
-      if (rd && rd.all > 0) {
-        detailRows.push({ region:r, ct, all:rd.all, od:rd.od||0, nonOd:rd.nonOd||0,
-          ltvBands: LTV_BANDS.map(b=>({ ...b, amt: rd.ltvBands?.[b.key]?.all||0 }))
-        });
-      }
+  RE_REGIONS_ORDER.forEach(grp => {
+    RE_COLTYPES_ORDER.forEach(ct => {
+      const d = stats.byRC[grp+'|'+ct];
+      if (d && d.all.total.bal>0) detailRows.push({grp,ct,all:d.all,od:d.od,nonOd:d.nonOd});
     });
   });
 
-  function fmtBil(v) { return v>0 ? (v/100000000).toFixed(2)+'억' : '-'; }
-  function fmtPct(v,t) { return t>0 ? (v/t*100).toFixed(1)+'%' : '-'; }
-  function ltvBar(bands, total) {
-    if (!total) return '';
-    return \`<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:1px">
-      \${bands.map(b=> b.amt>0 ? \`<div style="flex:\${b.amt/total};background:\${b.color}" title="\${b.label}: \${fmtBil(b.amt)}"></div>\` : '').join('')}
-    </div>\`;
+  function usedBandsFor(rows) { return RE_LTV_BANDS.filter(b=>rows.some(r=>r.all[b.key].bal>0)); }
+
+  // ── 테이블 헬퍼 (JS 문자열 연결 방식 — 백틱 불필요)
+  function bandTh(ub) { return ub.map(b=>'<th style="color:'+b.color+'">'+b.label+'</th>').join(''); }
+  function bandCells(ub, bd) {
+    return ub.map(b=>'<td>'+fmtChun(bd[b.key].bal)+'<br><span style="font-size:10px;color:#9ca3af">'+(bd[b.key].cnt?bd[b.key].cnt+'건':'')+'</span></td>').join('');
+  }
+  function bandCellsBold(ub, bd) {
+    return ub.map(b=>'<td><b>'+fmtChun(bd[b.key].bal)+'</b><br><span style="font-size:10px;color:#9ca3af">'+(bd[b.key].cnt?bd[b.key].cnt+'건':'')+'</span></td>').join('');
   }
 
-  // ── 크로스 테이블: 지역 × LTV
-  function mkCrossRegion() {
-    const ltvUsedHere = ltvAll.filter(b=>regionRows.some(r=>r.ltvBands.find(lb=>lb.key===b.key&&lb.amt>0)));
-    return \`<div class="overflow-auto">
-<table class="data-table">
-  <thead><tr>
-    <th class="text-left">지역</th>
-    \${ltvUsedHere.map(b=>\`<th style="color:\${b.color}">\${b.label}</th>\`).join('')}
-    <th>합계</th><th>연체</th><th>연체율</th>
-  </tr></thead>
-  <tbody>
-    \${regionRows.map(r=>\`<tr>
-      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:\${REGION_COLORS[r.region]||'#6b7280'};margin-right:6px"></span>\${r.region}</td>
-      \${ltvUsedHere.map(b=>\`<td>\${fmtBil(r.ltvBands.find(lb=>lb.key===b.key)?.amt||0)}</td>\`).join('')}
-      <td class="font-semibold">\${fmtBil(r.all)}</td>
-      <td style="color:#dc2626">\${fmtBil(r.od)}</td>
-      <td>\${fmtPct(r.od,r.all)}</td>
-    </tr>\`).join('')}
-    <tr class="font-bold" style="background:#f8fafd;border-top:2px solid #e5e7eb">
-      <td>합계</td>
-      \${ltvUsedHere.map(b=>\`<td><b>\${fmtBil(ltvAll.find(lb=>lb.key===b.key)?.amt||0)}</b></td>\`).join('')}
-      <td><b>\${fmtBil(totalAmt)}</b></td>
-      <td style="color:#dc2626"><b>\${fmtBil(odAmt)}</b></td>
-      <td>\${fmtPct(odAmt,totalAmt)}</td>
-    </tr>
-  </tbody>
-</table></div>\`;
+  function mkOdLtvCross() {
+    const ub = RE_LTV_BANDS.filter(b=>S.all[b.key].bal>0);
+    return '<div class="overflow-auto"><table class="data-table">'
+      + '<thead><tr><th class="text-left">구분</th><th>건수</th>' + bandTh(ub) + '<th>합계</th><th>비율</th></tr></thead>'
+      + '<tbody>'
+      + '<tr><td><span class="badge badge-green">미연체</span></td><td>'+fmtReCnt(nonOdCnt)+'</td>'+bandCells(ub,S.nonOd)+'<td class="font-semibold" style="color:#059669">'+fmtChun(nonOdBal)+'</td><td>'+fmtRePct(nonOdBal,totalBal)+'</td></tr>'
+      + '<tr><td><span class="badge badge-red">연체(d&gt;10)</span></td><td>'+fmtReCnt(odCnt)+'</td>'+bandCells(ub,S.od)+'<td class="font-semibold" style="color:#dc2626">'+fmtChun(odBal)+'</td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td>100%</td></tr>'
+      + '</tbody></table></div>';
   }
 
-  // ── 크로스 테이블: 담보종류 × LTV
-  function mkCrossColtype() {
-    const ltvUsedHere = ltvAll.filter(b=>coltypeRows.some(r=>r.ltvBands.find(lb=>lb.key===b.key&&lb.amt>0)));
-    return \`<div class="overflow-auto">
-<table class="data-table">
-  <thead><tr>
-    <th class="text-left">담보종류</th>
-    \${ltvUsedHere.map(b=>\`<th style="color:\${b.color}">\${b.label}</th>\`).join('')}
-    <th>합계</th><th>연체</th><th>연체율</th>
-  </tr></thead>
-  <tbody>
-    \${coltypeRows.map(r=>\`<tr>
-      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:\${COLTYPE_COLORS[r.ct]||'#6b7280'};margin-right:6px"></span>\${r.ct}</td>
-      \${ltvUsedHere.map(b=>\`<td>\${fmtBil(r.ltvBands.find(lb=>lb.key===b.key)?.amt||0)}</td>\`).join('')}
-      <td class="font-semibold">\${fmtBil(r.all)}</td>
-      <td style="color:#dc2626">\${fmtBil(r.od)}</td>
-      <td>\${fmtPct(r.od,r.all)}</td>
-    </tr>\`).join('')}
-    <tr class="font-bold" style="background:#f8fafd;border-top:2px solid #e5e7eb">
-      <td>합계</td>
-      \${ltvUsedHere.map(b=>\`<td><b>\${fmtBil(ltvAll.find(lb=>lb.key===b.key)?.amt||0)}</b></td>\`).join('')}
-      <td><b>\${fmtBil(totalAmt)}</b></td>
-      <td style="color:#dc2626"><b>\${fmtBil(odAmt)}</b></td>
-      <td>\${fmtPct(odAmt,totalAmt)}</td>
-    </tr>
-  </tbody>
-</table></div>\`;
+  function mkRegionCross() {
+    const ub = usedBandsFor(regionRows);
+    const rows = regionRows.map(r=>{
+      const dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(RE_REGION_COLORS[r.grp]||'#6b7280')+';margin-right:6px"></span>';
+      return '<tr><td>'+dot+r.grp+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+bandCells(ub,r.all)
+        +'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
+    }).join('');
+    return '<div class="overflow-auto"><table class="data-table">'
+      + '<thead><tr><th class="text-left">지역</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
+      + '<tbody>' + rows
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '</tbody></table></div>';
   }
 
-  // ── 지역×담보종류 상세 크로스
+  function mkColtypeCross() {
+    const ub = usedBandsFor(coltypeRows);
+    const rows = coltypeRows.map(r=>{
+      const dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(RE_COLTYPE_COLORS[r.ct]||'#6b7280')+';margin-right:6px"></span>';
+      return '<tr><td>'+dot+r.ct+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+bandCells(ub,r.all)
+        +'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
+    }).join('');
+    return '<div class="overflow-auto"><table class="data-table">'
+      + '<thead><tr><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
+      + '<tbody>' + rows
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '</tbody></table></div>';
+  }
+
   function mkDetailCross() {
-    if (detailRows.length === 0) return '<div class="text-gray-400 p-4 text-sm">데이터 없음</div>';
-    const ltvUsedHere = ltvAll.filter(b=>detailRows.some(r=>r.ltvBands.find(lb=>lb.key===b.key&&lb.amt>0)));
-    const regions = [...new Set(detailRows.map(r=>r.region))];
-    return \`<div class="overflow-auto">
-<table class="data-table">
-  <thead><tr>
-    <th class="text-left">지역</th>
-    <th class="text-left">담보종류</th>
-    \${ltvUsedHere.map(b=>\`<th style="color:\${b.color}">\${b.label}</th>\`).join('')}
-    <th>합계</th><th>연체</th><th>연체율</th>
-  </tr></thead>
-  <tbody>
-    \${regions.map(reg => {
-      const rows = detailRows.filter(r=>r.region===reg);
-      const regTotal = rows.reduce((s,r)=>s+r.all,0);
-      const regOd    = rows.reduce((s,r)=>s+r.od,0);
-      return rows.map((r,i)=> \`<tr \${i===rows.length-1?'style="border-bottom:2px solid #e5e7eb"':''}>
-        \${i===0 ? \`<td rowspan="\${rows.length}" style="font-weight:700;color:\${REGION_COLORS[reg]||'#374151'};border-right:1px solid #e5e7eb;background:#f8fafd">\${reg}</td>\` : ''}
-        <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:\${COLTYPE_COLORS[r.ct]||'#6b7280'};margin-right:5px"></span>\${r.ct}</td>
-        \${ltvUsedHere.map(b=>\`<td>\${fmtBil(r.ltvBands.find(lb=>lb.key===b.key)?.amt||0)}</td>\`).join('')}
-        <td class="font-semibold">\${fmtBil(r.all)}</td>
-        <td style="color:#dc2626">\${fmtBil(r.od)}</td>
-        <td>\${fmtPct(r.od,r.all)}</td>
-      </tr>\`).join('')
-      + \`<tr style="background:#eff6ff;font-weight:600">
-        <td colspan="2" style="color:\${REGION_COLORS[reg]||'#374151'}">\${reg} 소계</td>
-        \${ltvUsedHere.map(b=>\`<td>\${fmtBil(rows.reduce((s,r)=>s+(r.ltvBands.find(lb=>lb.key===b.key)?.amt||0),0))}</td>\`).join('')}
-        <td>\${fmtBil(regTotal)}</td>
-        <td style="color:#dc2626">\${fmtBil(regOd)}</td>
-        <td>\${fmtPct(regOd,regTotal)}</td>
-      </tr>\`;
-    }).join('')}
-    <tr class="font-bold" style="background:#f8fafd;border-top:2px solid #374151">
-      <td colspan="2">전체 합계</td>
-      \${ltvUsedHere.map(b=>\`<td><b>\${fmtBil(detailRows.reduce((s,r)=>s+(r.ltvBands.find(lb=>lb.key===b.key)?.amt||0),0))}</b></td>\`).join('')}
-      <td><b>\${fmtBil(totalAmt)}</b></td>
-      <td style="color:#dc2626"><b>\${fmtBil(odAmt)}</b></td>
-      <td>\${fmtPct(odAmt,totalAmt)}</td>
-    </tr>
-  </tbody>
-</table></div>\`;
+    if (!detailRows.length) return '<div class="text-gray-400 p-4 text-sm">데이터 없음</div>';
+    const ub = usedBandsFor(detailRows);
+    const regions = [...new Set(detailRows.map(r=>r.grp))];
+    const bodyHtml = regions.map(grp => {
+      const rows = detailRows.filter(r=>r.grp===grp);
+      const regBal = rows.reduce((s,r)=>s+r.all.total.bal,0);
+      const regOd  = rows.reduce((s,r)=>s+r.od.total.bal,0);
+      const regCnt = rows.reduce((s,r)=>s+r.all.total.cnt,0);
+      const rowsHtml = rows.map((r,i)=>{
+        const cells = bandCells(ub,r.all);
+        const rc = i===0 ? '<td rowspan="'+rows.length+'" style="font-weight:700;color:'+(RE_REGION_COLORS[grp]||'#374151')+';border-right:1px solid #e5e7eb;background:#f8fafd;vertical-align:top;padding-top:10px">'+grp+'</td>' : '';
+        const dot = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+(RE_COLTYPE_COLORS[r.ct]||'#6b7280')+';margin-right:5px"></span>';
+        return '<tr'+(i===rows.length-1?' style="border-bottom:2px solid #d1d5db"':'')+'>'+rc+'<td>'+dot+r.ct+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+cells+'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
+      }).join('');
+      const sc = ub.map(b=>'<td>'+fmtChun(rows.reduce((s,r)=>s+r.all[b.key].bal,0))+'</td>').join('');
+      const sub = '<tr style="background:#eff6ff;font-weight:600;border-bottom:2px solid #bfdbfe"><td colspan="2" style="color:'+(RE_REGION_COLORS[grp]||'#374151')+'">'+grp+' 소계</td><td>'+fmtReCnt(regCnt)+'</td>'+sc+'<td>'+fmtChun(regBal)+'</td><td style="color:#dc2626">'+fmtChun(regOd)+'</td><td>'+fmtRePct(regOd,regBal)+'</td></tr>';
+      return rowsHtml + sub;
+    }).join('');
+    const tot = ub.map(b=>'<td><b>'+fmtChun(S.all[b.key].bal)+'</b></td>').join('');
+    return '<div class="overflow-auto"><table class="data-table">'
+      + '<thead><tr><th class="text-left">지역</th><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
+      + '<tbody>' + bodyHtml
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #374151"><td colspan="2">전체 합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+tot+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '</tbody></table></div>';
   }
 
-  el.innerHTML = \`
-<div class="space-y-5">
-  <!-- 헤더 -->
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-building mr-2 text-blue-500"></i>부동산 현황</h2>
-      <p class="text-xs text-gray-400 mt-0.5">담보 유형별 LTV 구간 현황 (단위: 억원)</p>
-    </div>
-    <div class="flex items-center gap-2 flex-wrap">
-      <!-- 기준일 선택 -->
-      <select id="re-date-sel" onchange="reSelDate(this.value)" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 font-medium">
-        \${dateList.map(d=>\`<option value="\${d}" \${d===selDate?'selected':''}>\${d}</option>\`).join('')}
-      </select>
-      <!-- 파일 업로드 -->
-      <label class="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 cursor-pointer">
-        <i class="fas fa-file-excel mr-1.5"></i>엑셀 업로드
-        <input type="file" accept=".xlsx,.xls" style="display:none" onchange="reUpload(event)">
-      </label>
-      <!-- 데이터 삭제 -->
-      <button onclick="reDeleteAll()" class="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs hover:bg-red-50">
-        <i class="fas fa-trash-alt mr-1"></i>전체삭제
-      </button>
-    </div>
-  </div>
+  // ── LTV 분포 바
+  const ltvBarHtml = ltvUsed.length > 0 ? (
+    '<div class="bg-white rounded-xl border border-gray-200 p-4">'
+    + '<div class="flex items-center justify-between mb-3">'
+    + '<span class="text-xs font-bold text-gray-600"><i class="fas fa-sliders-h mr-1.5 text-blue-400"></i>LTV 구간별 잔고 분포</span>'
+    + '<span class="text-xs text-gray-400">'+selDate+' 기준 · '+loanTypeName+'</span>'
+    + '</div>'
+    + '<div style="display:flex;height:20px;border-radius:10px;overflow:hidden;gap:1px;margin-bottom:10px">'
+    + ltvUsed.map(b=>'<div style="flex:'+(S.all[b.key].bal/totalBal)+';background:'+b.color+';min-width:2px" title="'+b.label+': '+fmtChun(S.all[b.key].bal)+' ('+fmtRePct(S.all[b.key].bal,totalBal)+') '+S.all[b.key].cnt+'건"></div>').join('')
+    + '</div>'
+    + '<div class="flex flex-wrap gap-x-4 gap-y-1.5">'
+    + ltvUsed.map(b=>'<div class="flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:2px;background:'+b.color+';display:inline-block;flex-shrink:0"></span><span class="text-xs text-gray-600">'+b.label+'</span><span class="text-xs font-semibold text-gray-800">'+fmtChun(S.all[b.key].bal)+'</span><span class="text-xs text-gray-400">('+fmtRePct(S.all[b.key].bal,totalBal)+'·'+S.all[b.key].cnt+'건)</span></div>').join('')
+    + '</div></div>'
+  ) : '';
 
-  <!-- 대출유형 탭 -->
-  <div class="flex gap-2">
-    \${loanTypes.map(lt=>\`<button onclick="reLoanType('\${lt}')"
-      class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all \${lt===reSelLoanType?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}">\${ltLabel[lt]}</button>\`).join('')}
-  </div>
+  // ── 대출유형 탭
+  const loanTabsHtml = '<div class="flex gap-2">'
+    + Object.entries(LT).map(([k,v])=>'<button onclick="window._reLoanType=''+k+'';renderPage()" class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all '+(k===reSelLoanType?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300')+'">'+v+'</button>').join('')
+    + '</div>';
 
-  <!-- KPI 카드 -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="bg-white rounded-xl border border-gray-200 p-4">
-      <div class="text-xs text-gray-500 mb-1 font-medium"><i class="fas fa-coins mr-1 text-blue-400"></i>전체 잔고</div>
-      <div style="font-size:22px;font-weight:800;color:#1d4ed8">\${fmtBil(totalAmt)}</div>
-      <div class="text-xs text-gray-400 mt-1">담보론 전체</div>
-    </div>
-    <div class="bg-white rounded-xl border border-red-200 p-4">
-      <div class="text-xs text-red-600 mb-1 font-medium"><i class="fas fa-exclamation-triangle mr-1"></i>연체 잔고</div>
-      <div style="font-size:22px;font-weight:800;color:#dc2626">\${fmtBil(odAmt)}</div>
-      <div class="text-xs text-gray-400 mt-1">연체율 <strong style="color:#dc2626">\${odRate}%</strong></div>
-    </div>
-    <div class="bg-white rounded-xl border border-emerald-200 p-4">
-      <div class="text-xs text-emerald-600 mb-1 font-medium"><i class="fas fa-check-circle mr-1"></i>미연체 잔고</div>
-      <div style="font-size:22px;font-weight:800;color:#059669">\${fmtBil(nonOdAmt)}</div>
-      <div class="text-xs text-gray-400 mt-1">전체의 \${fmtPct(nonOdAmt,totalAmt)}</div>
-    </div>
-    <div class="bg-white rounded-xl border border-purple-200 p-4">
-      <div class="text-xs text-purple-600 mb-1 font-medium"><i class="fas fa-chart-pie mr-1"></i>LTV 85%↑ 비중</div>
-      <div style="font-size:22px;font-weight:800;color:#7c3aed">\${fmtPct(ltvAll.find(b=>b.key==='ltv85p')?.amt||0, totalAmt)}</div>
-      <div class="text-xs text-gray-400 mt-1">\${fmtBil(ltvAll.find(b=>b.key==='ltv85p')?.amt||0)}</div>
-    </div>
-  </div>
+  // ── 기준월 select
+  const dateSelHtml = '<select onchange="window._reSelDate=this.value;renderPage()" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 font-medium">'
+    + dateList.map(d=>'<option value="'+d+'"'+(d===selDate?' selected':'')+'>'+d+'</option>').join('')
+    + '</select>';
 
-  <!-- LTV 구간 요약 바 -->
-  <div class="bg-white rounded-xl border border-gray-200 p-4">
-    <div class="flex items-center justify-between mb-3">
-      <span class="text-xs font-bold text-gray-600"><i class="fas fa-sliders-h mr-1.5 text-blue-400"></i>LTV 구간별 잔고 분포 (전체)</span>
-      <span class="text-xs text-gray-400">기준: \${selDate}</span>
-    </div>
-    <div style="display:flex;height:18px;border-radius:9px;overflow:hidden;gap:1px;margin-bottom:10px">
-      \${ltvUsed.map(b=>\`<div style="flex:\${b.amt/totalAmt};background:\${b.color};min-width:2px" title="\${b.label}: \${fmtBil(b.amt)} (\${fmtPct(b.amt,totalAmt)})"></div>\`).join('')}
-    </div>
-    <div class="flex flex-wrap gap-3">
-      \${ltvUsed.map(b=>\`<div class="flex items-center gap-1.5">
-        <span style="width:10px;height:10px;border-radius:2px;background:\${b.color};display:inline-block"></span>
-        <span class="text-xs text-gray-600">\${b.label}</span>
-        <span class="text-xs font-semibold text-gray-800">\${fmtBil(b.amt)}</span>
-        <span class="text-xs text-gray-400">(\${fmtPct(b.amt,totalAmt)})</span>
-      </div>\`).join('')}
-    </div>
-  </div>
-
-  <!-- 크로스 테이블 섹션 -->
-  <div class="bg-white rounded-xl border border-gray-200 p-4">
-    <div class="flex items-center justify-between mb-4">
-      <span class="text-xs font-bold text-gray-700"><i class="fas fa-table mr-1.5 text-indigo-400"></i>지역 × LTV 구간</span>
-    </div>
-    \${mkCrossRegion()}
-  </div>
-
-  <div class="bg-white rounded-xl border border-gray-200 p-4">
-    <div class="flex items-center justify-between mb-4">
-      <span class="text-xs font-bold text-gray-700"><i class="fas fa-home mr-1.5 text-teal-400"></i>담보종류 × LTV 구간</span>
-    </div>
-    \${mkCrossColtype()}
-  </div>
-
-  <div class="bg-white rounded-xl border border-gray-200 p-4">
-    <div class="flex items-center justify-between mb-4">
-      <span class="text-xs font-bold text-gray-700"><i class="fas fa-map-marked-alt mr-1.5 text-orange-400"></i>지역 × 담보종류 × LTV 상세</span>
-    </div>
-    \${mkDetailCross()}
-  </div>
-
-</div>\`;
-}
-
-// ── 부동산 탭 이벤트
-function reSelDate(v) { window._reSelDate = v; renderPage(); }
-function reLoanType(v) { window._reLoanType = v; renderPage(); }
-
-// ── 부동산 엑셀 업로드
-async function reUpload(ev) {
-  const file = ev.target.files?.[0];
-  if (!file) return;
-  const buf = await file.arrayBuffer();
-  const uint8 = new Uint8Array(buf);
-  // SheetJS 없으면 간이 파싱 불가 — XLSX 라이브러리 CDN 로드 후 파싱
-  if (typeof XLSX === 'undefined') {
-    alert('XLSX 라이브러리 로딩 중입니다. 잠시 후 다시 시도해 주세요.');
-    return;
-  }
-  try {
-    const wb = XLSX.read(uint8, { type: 'array', cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: 0 });
-    const parsed = reParseSheet(rows);
-    if (!parsed) { alert('엑셀 형식을 인식할 수 없습니다. 담보 현황 양식을 확인해 주세요.'); return; }
-    const db = getReDB();
-    db[parsed.baseDate] = parsed;
-    saveReDB(db);
-    window._reSelDate = parsed.baseDate;
-    window._reLoanType = window._reLoanType || 'loan';
-    renderPage();
-  } catch(e) {
-    alert('파일 파싱 오류: ' + e.message);
-  }
-}
-
-// ── 엑셀 시트 파싱 (담보.xlsx 구조 기준)
-function reParseSheet(rows) {
-  // rows[0] = 행1, rows[1] = 행2(기준일), rows[2] = 행3(헤더: 담보/전체/LTV구간/연체/미연체)
-  // B2 = 기준일, C2 = '7월 31일 기준' 등
-  if (!rows || rows.length < 4) return null;
-
-  // 기준일 추출
-  // B2(rows[1][1]) = 날짜 또는 연도 힌트, C2(rows[1][2]) = '7월 31일 기준' 형태
-  let baseDate = '알 수 없음';
-  const raw2B = rows[1]?.[1];  // B2
-  const raw2C = rows[1]?.[2];  // C2: '7월 31일 기준'
-
-  let yearHint = new Date().getFullYear();
-  if (raw2B instanceof Date) { yearHint = raw2B.getFullYear(); }
-  else if (typeof raw2B === 'number') {
-    try { const d=XLSX.SSF.parse_date_code(raw2B); if(d) yearHint=d.y; } catch(e){}
-  }
-
-  if (typeof raw2C === 'string') {
-    // '7월 31일 기준' → '2026-07-31'
-    const m2 = raw2C.match(/(\d+)\s*월\s*(\d+)\s*일/);
-    if (m2) {
-      const mon=parseInt(m2[1]), day=parseInt(m2[2]);
-      baseDate = \`\${yearHint}-\${String(mon).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;
-    } else {
-      baseDate = raw2C.replace('기준','').trim() || '알 수 없음';
-    }
-  } else if (raw2B instanceof Date) {
-    // B2가 날짜이고 C2가 없는 경우: B2를 그대로 사용
-    const y=raw2B.getFullYear(), m=raw2B.getMonth()+1, d=raw2B.getDate();
-    baseDate = \`\${y}-\${String(m).padStart(2,'0')}-\${String(d).padStart(2,'0')}\`;
-  } else if (typeof raw2B === 'number') {
-    try { const d=XLSX.SSF.parse_date_code(raw2B); if(d) baseDate=\`\${d.y}-\${String(d.m).padStart(2,'0')}-\${String(d.d).padStart(2,'0')}\`; } catch(e){}
-  }
-
-  // 열 인덱스 매핑 (B=1, C=2, D=3 ... W=22)
-  // 전체: C(2)=합, D(3)~I(8)=LTV60/65/75/80/85/85+
-  // 연체: J(9)=합, K(10)~P(15)=LTV구간
-  // 미연체: Q(16)=합, R(17)~W(22)=LTV구간
-  const COL = { total:2, ltvAll:[3,4,5,6,7,8], od:9, ltvOd:[10,11,12,13,14,15], nonOd:16, ltvNon:[17,18,19,20,21,22] };
-  const LTV_KEYS = ['ltv60','ltv65','ltv75','ltv80','ltv85','ltv85p'];
-
-  function parseBlock(startRow, endRow) {
-    // 해당 블록 rows에서 담보지역, 담보종류, 수치 파싱
-    const result = {
-      total: { all:0, od:0, nonOd:0 },
-      ltvBands: {},
-      byRegion: {},
-      byColtype: {},
-      byRegionColtype: {}
-    };
-    LTV_KEYS.forEach(k=>{ result.ltvBands[k]={all:0,od:0,nonOd:0}; });
-
-    let currentRegion = null;
-    for (let ri = startRow; ri <= endRow && ri < rows.length; ri++) {
-      const row = rows[ri];
-      const bVal = String(row[1]||'').trim();
-      if (!bVal) continue;
-
-      const isRegion = REGIONS_ORDER.includes(bVal);
-      const isColtype = COLTYPES_ORDER.includes(bVal);
-      const isLoanType = bVal === '담보론' || bVal === '담보론(지분대출)';
-
-      if (isLoanType) {
-        // 합계 행
-        const r = row;
-        result.total.all   = Number(r[COL.total]) || 0;
-        result.total.od    = Number(r[COL.od])    || 0;
-        result.total.nonOd = Number(r[COL.nonOd]) || 0;
-        LTV_KEYS.forEach((k,i)=>{
-          result.ltvBands[k].all   = Number(r[COL.ltvAll[i]])  || 0;
-          result.ltvBands[k].od    = Number(r[COL.ltvOd[i]])   || 0;
-          result.ltvBands[k].nonOd = Number(r[COL.ltvNon[i]])  || 0;
-        });
-        continue;
-      }
-      if (isRegion) {
-        currentRegion = bVal;
-        const r = row;
-        result.byRegion[currentRegion] = {
-          all: Number(r[COL.total])||0, od: Number(r[COL.od])||0, nonOd: Number(r[COL.nonOd])||0,
-          ltvBands: {}
-        };
-        LTV_KEYS.forEach((k,i)=>{
-          result.byRegion[currentRegion].ltvBands[k] = {
-            all: Number(r[COL.ltvAll[i]])||0, od: Number(r[COL.ltvOd[i]])||0, nonOd: Number(r[COL.ltvNon[i]])||0
-          };
-        });
-        if (!result.byRegionColtype[currentRegion]) result.byRegionColtype[currentRegion] = {};
-        continue;
-      }
-      if (isColtype && currentRegion) {
-        const r = row;
-        const ct = bVal;
-        const ctData = {
-          all: Number(r[COL.total])||0, od: Number(r[COL.od])||0, nonOd: Number(r[COL.nonOd])||0,
-          ltvBands: {}
-        };
-        LTV_KEYS.forEach((k,i)=>{
-          ctData.ltvBands[k] = {
-            all: Number(r[COL.ltvAll[i]])||0, od: Number(r[COL.ltvOd[i]])||0, nonOd: Number(r[COL.ltvNon[i]])||0
-          };
-        });
-        result.byRegionColtype[currentRegion][ct] = ctData;
-        // byColtype 누산
-        if (!result.byColtype[ct]) result.byColtype[ct] = { all:0, od:0, nonOd:0, ltvBands:{} };
-        result.byColtype[ct].all   += ctData.all;
-        result.byColtype[ct].od    += ctData.od;
-        result.byColtype[ct].nonOd += ctData.nonOd;
-        LTV_KEYS.forEach(k=>{
-          if (!result.byColtype[ct].ltvBands[k]) result.byColtype[ct].ltvBands[k]={all:0,od:0,nonOd:0};
-          result.byColtype[ct].ltvBands[k].all   += ctData.ltvBands[k].all;
-          result.byColtype[ct].ltvBands[k].od    += ctData.ltvBands[k].od;
-          result.byColtype[ct].ltvBands[k].nonOd += ctData.ltvBands[k].nonOd;
-        });
-      }
-    }
-    return result;
-  }
-
-  // 담보론: 행4~36 (rows index 3~35)
-  // 담보론(지분대출): 행38~70 (rows index 37~69)
-  const loan      = parseBlock(3, 35);
-  const loanShare = parseBlock(37, 69);
-
-  return { baseDate, loan, loanShare };
-}
-
-function reDeleteAll() {
-  if (!confirm('부동산 현황 데이터를 모두 삭제하시겠습니까?')) return;
-  localStorage.removeItem(RE_KEY);
-  window._reSelDate = null;
-  REALESTATE = null;
-  renderPage();
+  el.innerHTML = '<div class="space-y-5">'
+    + '<div class="flex flex-wrap items-center justify-between gap-3">'
+    + '<div><h2 class="text-lg font-bold text-gray-800"><i class="fas fa-building mr-2 text-blue-500"></i>부동산 현황</h2>'
+    + '<p class="text-xs text-gray-400 mt-0.5">담보 유형별 LTV·지역·담보종류 현황 — 결산자료 기준 (단위: 천만원)</p></div>'
+    + dateSelHtml + '</div>'
+    + loanTabsHtml
+    + (totalCnt===0 ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700"><i class="fas fa-info-circle mr-2"></i>선택한 결산자료에 <b>'+loanTypeName+'</b> 계약이 없습니다.</div>' : '')
+    // KPI 카드
+    + '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">'
+    + '<div class="bg-white rounded-xl border border-blue-200 p-4"><div class="text-xs text-blue-600 mb-1 font-medium"><i class="fas fa-coins mr-1"></i>전체 잔고</div><div style="font-size:22px;font-weight:800;color:#1d4ed8">'+fmtChun(totalBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(totalCnt)+'</div></div>'
+    + '<div class="bg-white rounded-xl border border-red-200 p-4"><div class="text-xs text-red-600 mb-1 font-medium"><i class="fas fa-exclamation-triangle mr-1"></i>연체 잔고</div><div style="font-size:22px;font-weight:800;color:#dc2626">'+fmtChun(odBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(odCnt)+' / 연체율 <strong style="color:#dc2626">'+odRate+'%</strong></div></div>'
+    + '<div class="bg-white rounded-xl border border-emerald-200 p-4"><div class="text-xs text-emerald-600 mb-1 font-medium"><i class="fas fa-check-circle mr-1"></i>미연체 잔고</div><div style="font-size:22px;font-weight:800;color:#059669">'+fmtChun(nonOdBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(nonOdCnt)+' / '+fmtRePct(nonOdBal,totalBal)+'</div></div>'
+    + '<div class="bg-white rounded-xl border border-purple-200 p-4"><div class="text-xs text-purple-600 mb-1 font-medium"><i class="fas fa-chart-pie mr-1"></i>LTV 85%↑</div><div style="font-size:22px;font-weight:800;color:#7c3aed">'+fmtRePct(ltv85pBal,totalBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtChun(ltv85pBal)+' / '+fmtReCnt(S.all.ltv85p.cnt)+'</div></div>'
+    + '</div>'
+    + ltvBarHtml
+    + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-exchange-alt mr-1.5 text-red-400"></i>연체·미연체 × LTV 구간</p>' + mkOdLtvCross() + '</div>'
+    + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-map-marker-alt mr-1.5 text-blue-400"></i>지역 × LTV 구간</p>' + mkRegionCross() + '</div>'
+    + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-home mr-1.5 text-teal-400"></i>담보종류 × LTV 구간</p>' + mkColtypeCross() + '</div>'
+    + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-map-marked-alt mr-1.5 text-orange-400"></i>지역 × 담보종류 × LTV 상세</p>' + mkDetailCross() + '</div>'
+    + '</div>';
 }
 
 // ==================== 페이지: 월별 추이 ====================
