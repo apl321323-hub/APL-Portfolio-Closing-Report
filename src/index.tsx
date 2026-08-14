@@ -1881,18 +1881,74 @@ function renderOverview(el) {
 // ==================== 페이지: 잔고 구성비 ====================
 function renderBalance(el) {
   const total=LOAN.records.reduce((s,r)=>s+r.b,0);
-  const catData=aggregateByCategory().sort((a,b)=>b.balance-a.balance); // 구성비(잔액) 내림차순
-  const catMap=Object.fromEntries(catData.map(c=>[c.id,c])); // id → cat (bal10Over 포함)
+  const totalCnt = LOAN.records.length;
+  const catData=aggregateByCategory().sort((a,b)=>b.balance-a.balance);
+  const catMap=Object.fromEntries(catData.map(c=>[c.id,c]));
   const grpData=aggregateByGroup();
   const pMap=aggregateByProduct();
+
+  // ── KPI 집계
+  const rWSum  = LOAN.records.reduce((s,r)=>r.r>0&&r.b>0?s+r.b*r.r:s, 0);
+  const rBSum  = LOAN.records.reduce((s,r)=>r.r>0&&r.b>0?s+r.b:s,     0);
+  const balAvgRate = rBSum > 0 ? rWSum / rBSum : 0;
+  const balAvgAmt  = totalCnt > 0 ? total / totalCnt : 0;
+
+  // 담보 그룹(g1) 기준 LTV
+  const g1Grp     = grpData.find(g => g.id === 'g1');
+  const g1Cats    = g1Grp ? g1Grp.cats : [];
+  const g1LtvW    = g1Cats.reduce((s,c)=>{ const cc=catMap[c.id]||c; return s+(cc.ltvWSum||0); }, 0);
+  const g1LtvApp  = g1Cats.reduce((s,c)=>{ const cc=catMap[c.id]||c; return s+(cc.ltvAppSum||0); }, 0);
+  const g1Count   = g1Grp ? g1Grp.count : 0;
+  const balKpiLtv = g1LtvApp > 0 ? g1LtvW / g1LtvApp * 100 : null;
+
   el.innerHTML=\`
 <div class="space-y-5">
   <div class="flex items-center justify-between">
     <div><h2 class="text-lg font-bold">잔고 구성비 분석</h2>
-    <p class="text-sm text-gray-500">총 잔고: <strong>\${fmtAmt(total)}</strong> (\${fmtN(LOAN.records.length)}건) | 기준일: \${LOAN.base_date}</p></div>
+    <p class="text-sm text-gray-500">총 잔고: <strong>\${fmtAmt(total)}</strong> (\${fmtN(totalCnt)}건) | 기준일: \${LOAN.base_date}</p></div>
     <button onclick="openSettings()" class="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-100">
       <i class="fas fa-sliders-h"></i>카테고리 설정
     </button>
+  </div>
+
+  <!-- KPI 4종 -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#f0fdf4"><i class="fas fa-landmark" style="color:#059669"></i></div>
+        <span class="badge badge-green">잔고</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#059669">\${fmtAmt(total)}</p>
+      <p class="text-xs text-gray-500 mt-1">총 잔고</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCnt)}건</p>
+    </div>
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#fff7ed"><i class="fas fa-percentage" style="color:#d97706"></i></div>
+        <span class="badge badge-orange">금리</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#d97706">\${balAvgRate.toFixed(2)}%</p>
+      <p class="text-xs text-gray-500 mt-1">평균 정상이율</p>
+      <p class="text-xs text-gray-400 mt-0.5">잔액 가중평균</p>
+    </div>
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#eff6ff"><i class="fas fa-coins" style="color:#2563eb"></i></div>
+        <span class="badge badge-blue">평균</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#2563eb">\${(balAvgAmt/10000).toFixed(0)}만</p>
+      <p class="text-xs text-gray-500 mt-1">건당 평균 잔고</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCnt)}건 평균</p>
+    </div>
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#fdf4ff"><i class="fas fa-home" style="color:#9333ea"></i></div>
+        <span class="badge badge-purple">LTV</span>
+      </div>
+      <p class="text-2xl font-bold" style="color:#9333ea">\${balKpiLtv !== null ? balKpiLtv.toFixed(1)+'%' : '-'}</p>
+      <p class="text-xs text-gray-500 mt-1">담보 평균 LTV</p>
+      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(g1Count)}건 (담보상품)</p>
+    </div>
   </div>
 
   \${grpData.length>0?\`
