@@ -4137,16 +4137,40 @@ function renderRealestate(el) {
 
   function mkRegionCross() {
     const ub = usedBandsFor(regionRows);
+    // 지역별 담보종류 상세 데이터를 JSON으로 미리 직렬화 (마우스오버 툴팁용)
+    const regionDetailMap = {};
+    regionRows.forEach(r => {
+      const ctDetails = RE_COLTYPES_ORDER.map(ct => {
+        const d = stats.byRC[r.grp+'|'+ct];
+        if (!d || d.all.total.bal===0) return null;
+        return { ct, bal: d.all.total.bal, cnt: d.all.total.cnt, odBal: d.od.total.bal };
+      }).filter(Boolean);
+      regionDetailMap[r.grp] = ctDetails;
+    });
+    const detailJson = JSON.stringify(regionDetailMap).replace(/"/g,'&quot;');
+
     const rows = regionRows.map(r=>{
       const dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(RE_REGION_COLORS[r.grp]||'#6b7280')+';margin-right:6px"></span>';
-      return '<tr><td>'+dot+r.grp+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+bandCells(ub,r.all)
-        +'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
+      const color = RE_REGION_COLORS[r.grp]||'#6b7280';
+      return '<tr class="re-region-row" data-grp="'+r.grp+'" data-detail="'+detailJson+'" data-color="'+color+'" style="cursor:pointer">'
+        + '<td>'+dot+r.grp+'</td>'
+        + '<td>'+fmtReCnt(r.all.total.cnt)+'</td>'
+        + bandCells(ub,r.all)
+        + '<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td>'
+        + '<td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td>'
+        + '<td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td>'
+        + '</tr>';
     }).join('');
-    return '<div class="overflow-auto"><table class="data-table">'
+
+    return '<div style="position:relative" id="re-region-wrap">'
+      + '<div class="overflow-auto"><table class="data-table">'
       + '<thead><tr><th class="text-left">지역</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + rows
       + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
-      + '</tbody></table></div>';
+      + '</tbody></table></div>'
+      // 툴팁 DOM (숨김 상태)
+      + '<div id="re-region-tooltip" style="display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.13);min-width:320px;max-width:400px;padding:0;pointer-events:none"></div>'
+      + '</div>';
   }
 
   function mkColtypeCross() {
@@ -4235,6 +4259,103 @@ function renderRealestate(el) {
     + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-home mr-1.5 text-teal-400"></i>담보종류 × LTV 구간</p>' + mkColtypeCross() + '</div>'
     + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-map-marked-alt mr-1.5 text-orange-400"></i>지역 × 담보종류 × LTV 상세</p>' + mkDetailCross() + '</div>'
     + '</div>';
+
+  // ── 지역 행 마우스오버 툴팁 이벤트 바인딩
+  (function bindRegionTooltip() {
+    const tip = document.getElementById('re-region-tooltip');
+    if (!tip) return;
+    const rows2 = document.querySelectorAll('.re-region-row');
+    rows2.forEach(function(row) {
+      row.addEventListener('mouseenter', function(e) {
+        const grp   = row.getAttribute('data-grp');
+        const color = row.getAttribute('data-color') || '#6b7280';
+        const allDetail = JSON.parse(row.getAttribute('data-detail').replace(/&quot;/g, '"'));
+        const details = allDetail[grp] || [];
+        if (!details.length) return;
+        const totalB = details.reduce(function(s,d){return s+d.bal;},0);
+        const totalC = details.reduce(function(s,d){return s+d.cnt;},0);
+        const totalO = details.reduce(function(s,d){return s+d.odBal;},0);
+
+        // 담보종류별 가로 바 + 표
+        const RE_CT_COLORS2 = {'아파트':'#2563eb','빌라,맨션':'#0891b2','단독주택':'#059669','다세대':'#d97706','토지':'#7c3aed','오피스텔':'#db2777','상가':'#64748b'};
+        const barHtml = details.map(function(d){
+          const pct = totalB>0?(d.bal/totalB*100):0;
+          const c = RE_CT_COLORS2[d.ct]||'#94a3b8';
+          return '<div style="flex:'+pct+';background:'+c+';min-width:2px" title="'+d.ct+'"></div>';
+        }).join('');
+
+        const rowsHtml = details.map(function(d){
+          const c = RE_CT_COLORS2[d.ct]||'#94a3b8';
+          const pct = totalB>0?(d.bal/totalB*100).toFixed(1)+'%':'-';
+          const odRate = d.bal>0?(d.odBal/d.bal*100).toFixed(1)+'%':'-';
+          const dot = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-right:5px;flex-shrink:0"></span>';
+          return '<tr style="border-bottom:1px solid #f1f5f9">'
+            + '<td style="padding:5px 8px;font-size:12px;white-space:nowrap">'+dot+d.ct+'</td>'
+            + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:#374151">'+Math.round(d.bal/10000000).toLocaleString()+'천만</td>'
+            + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:#6b7280">'+d.cnt.toLocaleString()+'건</td>'
+            + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:#6b7280">'+pct+'</td>'
+            + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:'+(parseFloat(odRate)>=5?'#dc2626':'#6b7280')+'">'+odRate+'</td>'
+            + '</tr>';
+        }).join('');
+
+        tip.innerHTML = '<div style="padding:12px 14px 8px;border-bottom:1px solid #f1f5f9">'
+          + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+          + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+color+'"></span>'
+          + '<span style="font-size:13px;font-weight:700;color:#1e293b">'+grp+'</span>'
+          + '<span style="margin-left:auto;font-size:11px;color:#94a3b8">담보종류 상세</span>'
+          + '</div></div>'
+          + '<div style="padding:8px 14px 4px">'
+          + '<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:1px;margin-bottom:10px">'+barHtml+'</div>'
+          + '<table style="width:100%;border-collapse:collapse">'
+          + '<thead><tr style="background:#f8fafc">'
+          + '<th style="padding:4px 8px;font-size:11px;color:#94a3b8;text-align:left;font-weight:600">담보종류</th>'
+          + '<th style="padding:4px 8px;font-size:11px;color:#94a3b8;text-align:right;font-weight:600">잔고</th>'
+          + '<th style="padding:4px 8px;font-size:11px;color:#94a3b8;text-align:right;font-weight:600">건수</th>'
+          + '<th style="padding:4px 8px;font-size:11px;color:#94a3b8;text-align:right;font-weight:600">비율</th>'
+          + '<th style="padding:4px 8px;font-size:11px;color:#94a3b8;text-align:right;font-weight:600">연체율</th>'
+          + '</tr></thead>'
+          + '<tbody>'+rowsHtml+'</tbody>'
+          + '<tfoot><tr style="background:#f8fafc;font-weight:700">'
+          + '<td style="padding:5px 8px;font-size:12px">합계</td>'
+          + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:#1d4ed8">'+Math.round(totalB/10000000).toLocaleString()+'천만</td>'
+          + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:#374151">'+totalC.toLocaleString()+'건</td>'
+          + '<td style="padding:5px 8px;font-size:12px;text-align:right">100%</td>'
+          + '<td style="padding:5px 8px;font-size:12px;text-align:right;color:#dc2626">'+( totalB>0?(totalO/totalB*100).toFixed(1)+'%':'-')+'</td>'
+          + '</tr></tfoot></table></div>';
+
+        // 툴팁 위치: 마우스 오른쪽에 표시, 화면 밖 넘치면 왼쪽으로
+        tip.style.display = 'block';
+        const rect = tip.getBoundingClientRect();
+        const vw = window.innerWidth, vh = window.innerHeight;
+        let tx = e.clientX + 14;
+        let ty = e.clientY - 10;
+        if (tx + rect.width > vw - 10) tx = e.clientX - rect.width - 14;
+        if (ty + rect.height > vh - 10) ty = vh - rect.height - 10;
+        tip.style.left = tx + 'px';
+        tip.style.top  = ty + 'px';
+
+        // 행 하이라이트
+        row.style.background = '#eff6ff';
+      });
+      row.addEventListener('mousemove', function(e) {
+        const tip2 = document.getElementById('re-region-tooltip');
+        if (!tip2 || tip2.style.display==='none') return;
+        const rect2 = tip2.getBoundingClientRect();
+        const vw2 = window.innerWidth, vh2 = window.innerHeight;
+        let tx2 = e.clientX + 14;
+        let ty2 = e.clientY - 10;
+        if (tx2 + rect2.width > vw2 - 10) tx2 = e.clientX - rect2.width - 14;
+        if (ty2 + rect2.height > vh2 - 10) ty2 = vh2 - rect2.height - 10;
+        tip2.style.left = tx2 + 'px';
+        tip2.style.top  = ty2 + 'px';
+      });
+      row.addEventListener('mouseleave', function() {
+        const tip3 = document.getElementById('re-region-tooltip');
+        if (tip3) tip3.style.display = 'none';
+        row.style.background = '';
+      });
+    });
+  })();
 }
 
 // ==================== 페이지: 월별 추이 ====================
