@@ -191,6 +191,10 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
         <i class="sb-icon fas fa-exclamation-triangle"></i>
         <span class="sb-label">연체 현황</span>
       </div>
+      <div class="sb-item" data-page="overdue-change" onclick="goPage('overdue-change')">
+        <i class="sb-icon fas fa-exchange-alt"></i>
+        <span class="sb-label">연체 변동 분석</span>
+      </div>
       <div class="sb-item" data-page="trend" onclick="goPage('trend')">
         <i class="sb-icon fas fa-chart-line"></i>
         <span class="sb-label">월별 추이</span>
@@ -835,7 +839,8 @@ function renderPage() {
     case 'balance':  renderBalance(el);  break;
     case 'product':  renderProduct(el);  break;
     case 'agent':    renderAgent(el);    break;
-    case 'overdue':  renderOverdue(el);  break;
+    case 'overdue':        renderOverdue(el);        break;
+    case 'overdue-change': renderOverdueChange(el);  break;
     case 'trend':    renderTrend(el);    break;
     case 'upload':    renderUploadPage(el);    break;
     case 'contract':  renderContractPage(el);  break;
@@ -1571,6 +1576,10 @@ function processFile(file) {
       const colR   = hIdx('정상이율'); // O
       const colA   = hIdx('광고매체'); // Q
       const colD   = hIdx('연체일수'); // J
+      // B열 계약번호: 가능한 헤더명을 순서대로 시도
+      const colCno = ['계약번호','계약 번호','NO','번호','contract_no','계약ID'].reduce((found, n) => found>=0 ? found : hIdx(n), -1);
+      // B열이 고정 위치(index=1)인 경우 fallback
+      const effectiveCno = colCno >= 0 ? colCno : 1;
       const colLtv = hIdx('LTV');       // BH (or 최근LTV)
       const colK   = hIdx('최초대출액');      // K열
       const colCF  = hIdx('최종감정가');      // CF열
@@ -1606,6 +1615,7 @@ function processFile(file) {
         records.push({
           p:   pName,
           b:   b,
+          cno: String(row[effectiveCno] || '').trim(),  // 계약번호 (B열)
           r:   parseFloat(row[colR])  || 0,
           a:   String(row[colA]  || '기타').trim(),
           d:   parseInt(row[colD])    || 0,
@@ -3549,6 +3559,308 @@ function setOverdueFilter(key) {
   overdueFilterKey = key;
   const el = document.getElementById('main-content');
   renderOverdue(el);
+}
+
+// ==================== 페이지: 연체 변동 분석 ====================
+function renderOverdueChange(el) {
+  // ── 로드된 결산자료 목록 수집
+  const months = [];
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('loan_'));
+    keys.sort();
+    keys.forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      if (obj && obj.records && obj.base_date) months.push({ key: k, base_date: obj.base_date, records: obj.records });
+    });
+  } catch(e) {}
+  // 현재 LOAN도 포함 (중복 제거)
+  if (LOAN && LOAN.base_date && !months.find(m => m.base_date === LOAN.base_date)) {
+    months.push({ key: 'current', base_date: LOAN.base_date, records: LOAN.records || [] });
+  }
+  months.sort((a,b) => a.base_date.localeCompare(b.base_date));
+
+  const hasCno = months.length > 0 && months[0].records.length > 0 && months[0].records[0].cno !== undefined;
+
+  // ── 비교 월 선택 UI 렌더
+  const monthOpts = months.map(m => {
+    const ym = m.base_date.slice(0,7);
+    return '<option value="' + ym + '">' + ym.replace('-','년 ') + '월</option>';
+  }).join('');
+
+  const latestYm  = months.length >= 1 ? months[months.length-1].base_date.slice(0,7) : '';
+  const prevYm    = months.length >= 2 ? months[months.length-2].base_date.slice(0,7) : '';
+
+  el.innerHTML = \`
+<div class="space-y-5">
+  <!-- 헤더 -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-xl font-bold text-gray-800">연체 변동 분석</h2>
+      <p class="text-xs text-gray-500 mt-0.5">계약번호 기준으로 전월 대비 신규 연체 발생 / 연체 해소 현황을 비교합니다</p>
+    </div>
+  </div>
+
+  \${!hasCno ? \`
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-3">
+    <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
+    <div>
+      <p class="font-semibold text-amber-800">계약번호(B열) 데이터가 필요합니다</p>
+      <p class="text-sm text-amber-700 mt-1">현재 저장된 결산자료에 계약번호 필드가 없습니다.<br>
+      결산자료를 <strong>다시 업로드</strong>하면 B열(계약번호)이 자동으로 포함됩니다.<br>
+      이후 두 달 이상의 결산자료가 등록되면 이 페이지에서 비교 분석이 가능합니다.</p>
+    </div>
+  </div>\` : months.length < 2 ? \`
+  <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 flex items-start gap-3">
+    <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+    <div>
+      <p class="font-semibold text-blue-800">결산자료가 2개월 이상 필요합니다</p>
+      <p class="text-sm text-blue-700 mt-1">현재 <strong>\${months.length}개월</strong> 분의 결산자료가 등록되어 있습니다.<br>
+      연체 변동 분석은 전월과 당월을 비교하므로 최소 2개월 데이터가 필요합니다.</p>
+    </div>
+  </div>\` : \`
+  <!-- 월 선택 -->
+  <div class="bg-white rounded-xl border border-gray-200 p-4">
+    <div class="flex items-center gap-4 flex-wrap">
+      <div class="flex items-center gap-2">
+        <label class="text-sm font-medium text-gray-600">전월</label>
+        <select id="oc-prev-month" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white" onchange="renderOcResult()">
+          \${monthOpts}
+        </select>
+      </div>
+      <i class="fas fa-arrow-right text-gray-400"></i>
+      <div class="flex items-center gap-2">
+        <label class="text-sm font-medium text-gray-600">당월</label>
+        <select id="oc-curr-month" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white" onchange="renderOcResult()">
+          \${monthOpts}
+        </select>
+      </div>
+      <div class="ml-auto text-xs text-gray-400">계약번호 기준 매칭</div>
+    </div>
+  </div>
+
+  <!-- 결과 영역 -->
+  <div id="oc-result"></div>
+  \`}
+</div>\`;
+
+  if (hasCno && months.length >= 2) {
+    // 기본값 설정
+    const prevSel = document.getElementById('oc-prev-month');
+    const currSel = document.getElementById('oc-curr-month');
+    if (prevSel && prevYm) prevSel.value = prevYm;
+    if (currSel && latestYm) currSel.value = latestYm;
+    renderOcResult();
+  }
+}
+
+function renderOcResult() {
+  const prevYm = document.getElementById('oc-prev-month')?.value;
+  const currYm = document.getElementById('oc-curr-month')?.value;
+  const resEl  = document.getElementById('oc-result');
+  if (!resEl || !prevYm || !currYm || prevYm === currYm) return;
+
+  // 두 월의 레코드 수집
+  let prevRecs = [], currRecs = [];
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('loan_'));
+    keys.forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      if (!obj || !obj.base_date || !obj.records) return;
+      const ym = obj.base_date.slice(0,7);
+      if (ym === prevYm) prevRecs = obj.records;
+      if (ym === currYm) currRecs = obj.records;
+    });
+  } catch(e) {}
+  // LOAN 현재 데이터도 확인
+  if (LOAN && LOAN.base_date) {
+    const ym = LOAN.base_date.slice(0,7);
+    if (ym === prevYm && prevRecs.length === 0) prevRecs = LOAN.records || [];
+    if (ym === currYm && currRecs.length === 0) currRecs = LOAN.records || [];
+  }
+
+  if (prevRecs.length === 0 || currRecs.length === 0) {
+    resEl.innerHTML = '<div class="text-center py-8 text-gray-400">선택한 월의 데이터를 찾을 수 없습니다</div>';
+    return;
+  }
+
+  // ── 계약번호 맵 생성
+  const prevMap = {}; // cno → record
+  const currMap = {};
+  prevRecs.forEach(r => { if (r.cno) prevMap[r.cno] = r; });
+  currRecs.forEach(r => { if (r.cno) currMap[r.cno] = r; });
+
+  const prevTotal = prevRecs.reduce((s,r)=>s+(r.b||0),0);
+  const currTotal = currRecs.reduce((s,r)=>s+(r.b||0),0);
+
+  // ── 신규연체: 전월 d≤10이었는데 당월 d>10
+  const newOdList = [];   // { cno, p, a, prevD, currD, currB }
+  // ── 연체해소: 전월 d>10이었는데 당월 d=0
+  const resolvedList = []; // { cno, p, a, prevD, currD, prevB, currB }
+  // ── 지속연체: 전월 d>10이고 당월도 d>10
+  const continuedList = [];
+  // ── 연체악화: 전월 d>0이고 당월 d>전월d (연체일 증가)
+  // ── 매칭 실패 (cno 없음) 카운트
+  let noKeyPrev = prevRecs.filter(r=>!r.cno).length;
+  let noKeyCurr = currRecs.filter(r=>!r.cno).length;
+
+  const allCnos = new Set([...Object.keys(prevMap), ...Object.keys(currMap)]);
+  allCnos.forEach(cno => {
+    const p = prevMap[cno];
+    const c = currMap[cno];
+    if (!p || !c) return; // 한 쪽만 있는 경우(신규실행/상환종료) 제외
+    const pd = p.d || 0, cd = c.d || 0;
+    if (pd <= 10 && cd > 10) {
+      newOdList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, currB: c.b||0, prevB: p.b||0 });
+    } else if (pd > 10 && cd === 0) {
+      resolvedList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, prevB: p.b||0, currB: c.b||0 });
+    } else if (pd > 10 && cd > 10) {
+      continuedList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, prevB: p.b||0, currB: c.b||0 });
+    }
+  });
+
+  // 금액 합산
+  const newOdBal      = newOdList.reduce((s,r)=>s+r.currB,0);
+  const resolvedBal   = resolvedList.reduce((s,r)=>s+r.prevB,0);
+  const continuedBal  = continuedList.reduce((s,r)=>s+r.currB,0);
+
+  // 전월 d>10 전체 잔고 (연체율 분모)
+  const prevOdBal  = prevRecs.filter(r=>r.d>10).reduce((s,r)=>s+(r.b||0),0);
+  const currOdBal  = currRecs.filter(r=>r.d>10).reduce((s,r)=>s+(r.b||0),0);
+  const prevOdRate = prevTotal>0 ? (prevOdBal/prevTotal*100).toFixed(2) : '0.00';
+  const currOdRate = currTotal>0 ? (currOdBal/currTotal*100).toFixed(2) : '0.00';
+
+  // 신규연체율 = 신규연체 잔고 / 전월 전체 잔고
+  const newOdRate    = prevTotal > 0 ? (newOdBal/prevTotal*100).toFixed(2) : '0.00';
+  // 해소율 = 해소 잔고 / 전월 d>10 잔고
+  const resolveRate  = prevOdBal > 0 ? (resolvedBal/prevOdBal*100).toFixed(1) : '0.0';
+  // 잔존율 = 지속연체 잔고 / 전월 d>10 잔고
+  const continueRate = prevOdBal > 0 ? (continuedBal/prevOdBal*100).toFixed(1) : '0.0';
+
+  const matchedCnt = Object.keys(prevMap).filter(k=>currMap[k]).length;
+  const totalPrevCno = Object.keys(prevMap).length;
+
+  // 테이블 행 생성 헬퍼
+  function mkRows(list, type) {
+    if (list.length === 0) return '<tr><td colspan="6" class="text-center py-4 text-gray-400 text-xs">해당 없음</td></tr>';
+    // 잔고 내림차순 정렬
+    const sorted = [...list].sort((a,b)=>(b.currB||b.prevB)-(a.currB||a.prevB));
+    return sorted.slice(0,100).map((r,i) => {
+      const dispBal = type==='resolved' ? r.prevB : r.currB;
+      const dBadge  = (d) => {
+        if(d===0) return '<span style="color:#10b981;font-weight:600">정상</span>';
+        if(d<=10) return '<span style="color:#6b7280">'+d+'일</span>';
+        if(d<=30) return '<span style="color:#d97706;font-weight:600">'+d+'일</span>';
+        if(d<=90) return '<span style="color:#ea580c;font-weight:600">'+d+'일</span>';
+        return '<span style="color:#dc2626;font-weight:600">'+d+'일</span>';
+      };
+      const arrow = type==='resolved'
+        ? '<span style="color:#dc2626">'+r.prevD+'일</span> → <span style="color:#10b981;font-weight:700">정상</span>'
+        : type==='new'
+          ? '<span style="color:#6b7280">'+(r.prevD||0)+'일</span> → <span style="color:#dc2626;font-weight:700">'+r.currD+'일</span>'
+          : dBadge(r.prevD)+' → '+dBadge(r.currD);
+      return '<tr style="border-bottom:1px solid #f3f4f6">'
+        + '<td style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center">'+(i+1)+'</td>'
+        + '<td style="padding:7px 10px;font-size:11px;font-family:monospace;color:#374151">'+r.cno+'</td>'
+        + '<td style="padding:7px 10px;font-size:12px;color:#374151">'+r.p+'</td>'
+        + '<td style="padding:7px 10px;font-size:11px;color:#6b7280">'+r.a+'</td>'
+        + '<td style="padding:7px 10px;font-size:12px;text-align:center">'+arrow+'</td>'
+        + '<td style="padding:7px 10px;font-size:12px;font-weight:600;text-align:right;color:#1f2937">'+fmtAmt(dispBal)+'</td>'
+        + '</tr>';
+    }).join('') + (sorted.length>100 ? '<tr><td colspan="6" class="text-center py-2 text-xs text-gray-400">외 '+(sorted.length-100)+'건...</td></tr>' : '');
+  }
+
+  function mkTable(title, list, type, accentColor) {
+    return '<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">'
+      + '<div style="padding:14px 18px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">'
+      + '<span style="font-size:14px;font-weight:700;color:'+accentColor+'"><i class="fas '+(type==='new'?'fa-arrow-up-right-dots':'type'==='resolved'?'fa-check-circle':'fa-clock')+' mr-1.5"></i>'+title+'</span>'
+      + '<span style="font-size:12px;color:#6b7280">'+fmtN(list.length)+'건 / '+fmtAmt(list.reduce((s,r)=>s+(type==="resolved"?r.prevB:r.currB),0))+'</span>'
+      + '</div>'
+      + '<div style="overflow-x:auto">'
+      + '<table style="width:100%;border-collapse:collapse">'
+      + '<thead><tr style="background:#f8fafd">'
+      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:center">No</th>'
+      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:left">계약번호</th>'
+      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:left">상품</th>'
+      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:left">채널</th>'
+      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:center">연체일 변화</th>'
+      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:right">잔고</th>'
+      + '</tr></thead>'
+      + '<tbody>' + mkRows(list, type) + '</tbody>'
+      + '</table></div></div>';
+  }
+
+  const odRateArrow = parseFloat(currOdRate) > parseFloat(prevOdRate) ? '▲' : parseFloat(currOdRate) < parseFloat(prevOdRate) ? '▼' : '─';
+  const odRateColor = parseFloat(currOdRate) > parseFloat(prevOdRate) ? '#dc2626' : parseFloat(currOdRate) < parseFloat(prevOdRate) ? '#10b981' : '#6b7280';
+
+  resEl.innerHTML = ''
+    + '<div class="space-y-5">'
+    // ── KPI 카드 4개
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">'
+    // 연체율 변화
+    + '<div class="bg-white rounded-xl border border-gray-200 p-4">'
+    + '<div class="text-xs text-gray-500 mb-1">연체율 변화 <span class="text-gray-400">(10일초과)</span></div>'
+    + '<div class="flex items-end gap-2">'
+    + '<span style="font-size:22px;font-weight:800;color:'+odRateColor+'">' + odRateArrow + ' ' + currOdRate + '%</span>'
+    + '</div>'
+    + '<div class="text-xs text-gray-400 mt-1">전월 ' + prevOdRate + '% → 당월 ' + currOdRate + '%</div>'
+    + '</div>'
+    // 신규연체
+    + '<div class="bg-white rounded-xl border border-red-200 p-4">'
+    + '<div class="text-xs text-red-500 mb-1 font-medium">신규 연체 발생</div>'
+    + '<div style="font-size:22px;font-weight:800;color:#dc2626">' + fmtN(newOdList.length) + '건</div>'
+    + '<div class="text-xs text-gray-500 mt-1">' + fmtAmt(newOdBal) + ' / 신규연체율 <strong>' + newOdRate + '%</strong></div>'
+    + '</div>'
+    // 연체해소
+    + '<div class="bg-white rounded-xl border border-emerald-200 p-4">'
+    + '<div class="text-xs text-emerald-600 mb-1 font-medium">연체 해소 (정상 전환)</div>'
+    + '<div style="font-size:22px;font-weight:800;color:#10b981">' + fmtN(resolvedList.length) + '건</div>'
+    + '<div class="text-xs text-gray-500 mt-1">' + fmtAmt(resolvedBal) + ' / 해소율 <strong>' + resolveRate + '%</strong></div>'
+    + '</div>'
+    // 지속연체
+    + '<div class="bg-white rounded-xl border border-orange-200 p-4">'
+    + '<div class="text-xs text-orange-500 mb-1 font-medium">지속 연체 (10일초과 유지)</div>'
+    + '<div style="font-size:22px;font-weight:800;color:#ea580c">' + fmtN(continuedList.length) + '건</div>'
+    + '<div class="text-xs text-gray-500 mt-1">' + fmtAmt(continuedBal) + ' / 잔존율 <strong>' + continueRate + '%</strong></div>'
+    + '</div>'
+    + '</div>'
+    // ── 매칭 정보 바
+    + '<div class="bg-gray-50 rounded-lg px-4 py-2.5 flex items-center gap-3 text-xs text-gray-500">'
+    + '<i class="fas fa-link text-gray-400"></i>'
+    + '<span>계약번호 매칭: 전월 <strong>' + fmtN(totalPrevCno) + '건</strong> 중 <strong>' + fmtN(matchedCnt) + '건</strong> 양쪽 존재'
+    + (noKeyPrev+noKeyCurr>0 ? ' | <span class="text-amber-600">계약번호 없는 행: 전월 '+noKeyPrev+'건 / 당월 '+noKeyCurr+'건 (제외됨)</span>' : '') + '</span>'
+    + '<span class="ml-auto text-gray-400">' + prevYm + ' → ' + currYm + '</span>'
+    + '</div>'
+    // ── 탭
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button id="oct-new" class="tab-btn active" onclick="ocTab(\'new\')">🔴 신규연체 '+fmtN(newOdList.length)+'건</button>'
+    + '<button id="oct-resolved" class="tab-btn" onclick="ocTab(\'resolved\')">✅ 연체해소 '+fmtN(resolvedList.length)+'건</button>'
+    + '<button id="oct-continued" class="tab-btn" onclick="ocTab(\'continued\')">⚠️ 지속연체 '+fmtN(continuedList.length)+'건</button>'
+    + '</div>'
+    // ── 테이블 영역
+    + '<div id="oc-table-area">'
+    + mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626')
+    + '</div>'
+    + '</div>';
+
+  // 탭 전환 함수 (클로저로 저장)
+  window._ocData = { newOdList, resolvedList, continuedList, mkTable };
+}
+
+function ocTab(tab) {
+  ['new','resolved','continued'].forEach(t => {
+    const btn = document.getElementById('oct-'+t);
+    if(btn) btn.classList.toggle('active', t===tab);
+  });
+  const area = document.getElementById('oc-table-area');
+  if (!area || !window._ocData) return;
+  const { newOdList, resolvedList, continuedList, mkTable } = window._ocData;
+  if (tab==='new')       area.innerHTML = mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626');
+  else if(tab==='resolved') area.innerHTML = mkTable('연체 해소 - 정상 전환 (전월 d>10 → 당월 d=0)', resolvedList, 'resolved', '#10b981');
+  else                   area.innerHTML = mkTable('지속 연체 (전월 d>10 → 당월 d>10)', continuedList, 'continued', '#ea580c');
 }
 
 // ==================== 페이지: 월별 추이 ====================
