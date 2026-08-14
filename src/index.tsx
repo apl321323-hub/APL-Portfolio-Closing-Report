@@ -3255,6 +3255,59 @@ function renderOverdue(el) {
   const all = LOAN.records;
   const totalBal = all.reduce((s,r)=>s+r.b, 0);
 
+  // ── 전월 데이터 로드 (증감 계산용)
+  const db = getMonthsDB();
+  const currYm = LOAN.base_date ? LOAN.base_date.slice(0,7) : null;
+  let prevAll = null;
+  if (currYm) {
+    const prevEntries = Object.values(db).filter(v => v && v.base_date && v.records && v.base_date.slice(0,7) < currYm);
+    if (prevEntries.length > 0) {
+      prevEntries.sort((a,b) => b.base_date.localeCompare(a.base_date));
+      prevAll = prevEntries[0].records;
+    }
+  }
+
+  // 전월 구간별 집계
+  const Sp = arr => ({ cnt: arr.length, amt: arr.reduce((s,r)=>s+r.b,0) });
+  const gp = prevAll ? {
+    r0:   Sp(prevAll.filter(r=>r.d===0)),
+    r10:  Sp(prevAll.filter(r=>r.d>=1  && r.d<=10)),
+    r30:  Sp(prevAll.filter(r=>r.d>=11 && r.d<=30)),
+    r60:  Sp(prevAll.filter(r=>r.d>=31 && r.d<=60)),
+    r90:  Sp(prevAll.filter(r=>r.d>=61 && r.d<=90)),
+    r120: Sp(prevAll.filter(r=>r.d>=91 && r.d<=120)),
+    r180: Sp(prevAll.filter(r=>r.d>=121&& r.d<=180)),
+    rInf: Sp(prevAll.filter(r=>r.d>180)),
+  } : null;
+  const prevCard = gp ? {
+    c1: gp.r0,
+    c2: { cnt: gp.r30.cnt+gp.r60.cnt+gp.r90.cnt+gp.r120.cnt+gp.r180.cnt+gp.rInf.cnt,
+          amt: gp.r30.amt+gp.r60.amt+gp.r90.amt+gp.r120.amt+gp.r180.amt+gp.rInf.amt },
+    c3: { cnt: gp.r60.cnt+gp.r90.cnt+gp.r120.cnt+gp.r180.cnt+gp.rInf.cnt,
+          amt: gp.r60.amt+gp.r90.amt+gp.r120.amt+gp.r180.amt+gp.rInf.amt },
+    c4: { cnt: gp.r120.cnt+gp.r180.cnt+gp.rInf.cnt,
+          amt: gp.r120.amt+gp.r180.amt+gp.rInf.amt },
+  } : null;
+
+  // 증감 뱃지 생성 (금액 + 증감률)
+  const diffBadge = (curr, prev, invertColor) => {
+    if (!prev) return '';
+    const dAmt = curr.amt - prev.amt;
+    if (dAmt === 0) return '<div style="font-size:11px;color:#9ca3af;margin-top:4px">─ 전월 동일</div>';
+    const dPct  = prev.amt > 0 ? (dAmt / prev.amt * 100) : 0;
+    const isUp  = dAmt > 0;
+    const color = invertColor
+      ? (isUp ? '#059669' : '#dc2626')   // 정상: 증가=초록, 감소=빨강
+      : (isUp ? '#dc2626' : '#059669');  // 연체: 증가=빨강, 감소=초록
+    const arrow = isUp ? '▲' : '▼';
+    const sign  = isUp ? '+' : '';
+    return '<div style="font-size:11px;color:'+color+';margin-top:4px;display:flex;align-items:center;gap:4px">'
+      + '<span>'+arrow+' '+sign+fmtAmt(Math.abs(dAmt))+'</span>'
+      + '<span style="opacity:0.75">('+sign+dPct.toFixed(1)+'%)</span>'
+      + '<span style="color:#9ca3af;font-size:10px">전월대비</span>'
+      + '</div>';
+  };
+
   // ── 구간별 레코드
   const seg = {
     r0:   all.filter(r=>r.d===0),
@@ -3297,7 +3350,7 @@ function renderOverdue(el) {
   };
 
   // ── KPI 카드 렌더러
-  const mkCard = (title, badge, iconCls, mainColor, bgColor, mainData, subHtml) => {
+  const mkCard = (title, badge, iconCls, mainColor, bgColor, mainData, subHtml, diffHtml) => {
     const amtPct = pct(mainData.amt);
     return \`
     <div class="kpi-card p-5 flex flex-col">
@@ -3316,6 +3369,7 @@ function renderOverdue(el) {
           <span class="text-lg font-bold" style="color:\${mainColor}">\${amtPct}</span>
           <span class="text-xs text-gray-400">(\${fmtN(mainData.cnt)}건)</span>
         </div>
+        \${diffHtml || ''}
       </div>
       <div class="mt-auto">\${subHtml}</div>
     </div>\`;
@@ -3412,13 +3466,13 @@ function renderOverdue(el) {
   <!-- KPI 4카드 -->
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
     \${mkCard('정상(0일)', '정상', 'fas fa-check-circle', '#059669', '#f0fdf4', card1,
-      subRow('1~10일', 'r10', '#65a30d'))}
+      subRow('1~10일', 'r10', '#65a30d'), prevCard ? diffBadge(card1, prevCard.c1, true) : '')}
     \${mkCard('10일 초과', '주의', 'fas fa-exclamation-circle', '#d97706', '#fff7ed', card2,
-      subRow('11~30일', 'r30', '#f97316'))}
+      subRow('11~30일', 'r30', '#f97316'), prevCard ? diffBadge(card2, prevCard.c2, false) : '')}
     \${mkCard('30일 초과', '경고', 'fas fa-triangle-exclamation', '#dc2626', '#fef2f2', card3,
-      subRow('31~60일', 'r60', '#ef4444') + subRow('61~90일', 'r90', '#b91c1c'))}
+      subRow('31~60일', 'r60', '#ef4444') + subRow('61~90일', 'r90', '#b91c1c'), prevCard ? diffBadge(card3, prevCard.c3, false) : '')}
     \${mkCard('90일 초과', '위험', 'fas fa-skull-crossbones', '#7c2d12', '#fdf4ff', card4,
-      subRow('91~120일', 'r120', '#9333ea') + subRow('121~180일', 'r180', '#7e22ce') + subRow('180일 초과', 'rInf', '#581c87'))}
+      subRow('91~120일', 'r120', '#9333ea') + subRow('121~180일', 'r180', '#7e22ce') + subRow('180일 초과', 'rInf', '#581c87'), prevCard ? diffBadge(card4, prevCard.c4, false) : '')}
   </div>
 
   <!-- ── 카테고리 구성 패널 (신규대출 스타일) ── -->
