@@ -3179,11 +3179,10 @@ function selectNewLoanMonth(key) {
 let overdueFilterKey = 'all';
 
 // ── 그룹 패널 HTML 생성 (중첩 템플릿 리터럴 회피용 분리 함수)
-function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap) {
+function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap, odRateCatMap, odRateGrpMap) {
   if(odGrpArr.length === 0) {
     return '<div style="display:flex;align-items:center;justify-content:center;height:120px;color:#9ca3af;font-size:14px">해당 연체 건수 없음</div>';
   }
-  // 연체율 색상 헬퍼
   const odRateColor = (r) => r >= 10 ? '#dc2626' : r >= 3 ? '#d97706' : '#6b7280';
 
   const cols = odGrpArr.length;
@@ -3192,21 +3191,21 @@ function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMa
     const gPct     = filterBal > 0 ? (gd.bal / filterBal * 100) : 0;
     const gAvgR    = gd.rBSum > 0 ? (gd.rWSum / gd.rBSum).toFixed(2) : '-';
     const borderR  = gi < odGrpArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
-    // 그룹 연체율 = 필터잔고(그룹) / 전체잔고(그룹)
     const gTotBal  = totalGrpBalMap ? (totalGrpBalMap[gd.id] || 0) : 0;
-    const gOdRate  = gTotBal > 0 ? (gd.bal / gTotBal * 100) : 0;
+    const gOdNumer = odRateGrpMap  ? (odRateGrpMap[gd.id]   || 0) : gd.bal;
+    const gOdRate  = gTotBal > 0 ? (gOdNumer / gTotBal * 100) : 0;
     const gOdColor = odRateColor(gOdRate);
 
     let catRows = '';
     Object.values(gd.cats).sort((a,b)=>(a.order||99)-(b.order||99)).forEach(c => {
-      const cPct    = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
-      const cGpct   = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
-      const cAvgR   = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
-      // 카테고리 연체율 = 필터잔고(카테고리) / 전체잔고(카테고리)
-      const cTotBal = totalCatBalMap ? (totalCatBalMap[c.id] || 0) : 0;
-      const cOdRate = cTotBal > 0 ? (c.bal / cTotBal * 100) : 0;
+      const cPct     = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
+      const cGpct    = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
+      const cAvgR    = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
+      const cTotBal  = totalCatBalMap ? (totalCatBalMap[c.id] || 0) : 0;
+      const cOdNumer = odRateCatMap  ? (odRateCatMap[c.id]   || 0) : c.bal;
+      const cOdRate  = cTotBal > 0 ? (cOdNumer / cTotBal * 100) : 0;
       const cOdColor = odRateColor(cOdRate);
-      const odLabel = cTotBal > 0 ? cOdRate.toFixed(1) + '%' : '-';
+      const odLabel  = cTotBal > 0 ? cOdRate.toFixed(1) + '%' : '-';
 
       catRows += '<tr style="border-top:1px solid #f3f4f6">'
         + '<td style="padding:7px 8px;width:14px"><div style="width:9px;height:9px;border-radius:50%;background:' + c.color + '"></div></td>'
@@ -3219,9 +3218,7 @@ function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMa
     });
 
     html += '<div style="' + borderR + '">'
-      // 그룹 헤더
       + '<div style="background:' + gd.color + ';padding:8px 14px;text-align:center"><span style="color:#fff;font-size:13px;font-weight:700">' + gd.name + '</span></div>'
-      // 그룹 합계행
       + '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px 7px;background:' + gd.color + '08;border-bottom:1px solid ' + gd.color + '20">'
       +   '<div style="display:flex;align-items:center;gap:5px">'
       +     '<div style="width:9px;height:9px;border-radius:50%;background:' + gd.color + '"></div>'
@@ -3311,12 +3308,16 @@ function renderOverdue(el) {
   };
 
   // ── 카테고리·그룹 패널 집계 (필터 적용)
-  // 필터별 대상 레코드
+  // 필터별 대상 레코드 (파이·패널 구성비용)
   const filterRecs = overdueFilterKey === 'od90' ? all.filter(r=>r.d>90)
                    : overdueFilterKey === 'od30' ? all.filter(r=>r.d>30)
                    : overdueFilterKey === 'od10' ? all.filter(r=>r.d>10)
                    : all;
   const filterBal = filterRecs.reduce((s,r)=>s+r.b, 0);
+
+  // ── 연체율 계산용 분자 레코드
+  // 전체(all) 탭 → 10일 초과 연체율 기준, 나머지는 filterRecs와 동일
+  const odRateRecs = overdueFilterKey === 'all' ? all.filter(r=>r.d>10) : filterRecs;
 
   // ── 전체 레코드 기준 카테고리별 총잔고 집계 (연체율 분모)
   const totalCatBalMap = {};
@@ -3332,6 +3333,21 @@ function renderOverdue(el) {
     const grp = getGroupOfCategory(cat.id);
     if(!totalGrpBalMap[grp.id]) totalGrpBalMap[grp.id] = 0;
     totalGrpBalMap[grp.id] += r.b;
+  });
+
+  // ── 연체율 분자: 카테고리·그룹별 odRateRecs 잔고
+  const odRateCatMap = {};
+  odRateRecs.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '');
+    if(!odRateCatMap[cat.id]) odRateCatMap[cat.id] = 0;
+    odRateCatMap[cat.id] += r.b;
+  });
+  const odRateGrpMap = {};
+  odRateRecs.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '');
+    const grp = getGroupOfCategory(cat.id);
+    if(!odRateGrpMap[grp.id]) odRateGrpMap[grp.id] = 0;
+    odRateGrpMap[grp.id] += r.b;
   });
 
   // ── 카테고리 집계 (파이차트용)
@@ -3420,9 +3436,10 @@ function renderOverdue(el) {
         <div style="height:190px"><canvas id="od-cat-pie"></canvas></div>
         <div class="mt-3 space-y-1.5">
           \${odCatArr.map(c => {
-            const cp      = filterBal>0 ? (c.bal/filterBal*100).toFixed(1) : '0.0';
+            const cp        = filterBal>0 ? (c.bal/filterBal*100).toFixed(1) : '0.0';
             const catTotBal = totalCatBalMap[c.id] || 0;
-            const odRate  = catTotBal>0 ? (c.bal/catTotBal*100).toFixed(1) : null;
+            const odNumer   = odRateCatMap[c.id] || 0;
+            const odRate    = catTotBal>0 ? (odNumer/catTotBal*100).toFixed(1) : null;
             const odColor = odRate && parseFloat(odRate)>=10 ? '#dc2626' : odRate && parseFloat(odRate)>=3 ? '#d97706' : '#6b7280';
             return \`<div class="flex items-center gap-2 text-xs">
               <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
@@ -3432,13 +3449,13 @@ function renderOverdue(el) {
               \${odRate !== null ? \`<span class="font-bold" style="color:\${odColor};min-width:38px;text-align:right">\${odRate}%</span>\` : ''}
             </div>\`;
           }).join('')}
-          <div class="mt-2 pt-2 border-t border-gray-100 flex justify-end text-xs text-gray-400">연체율</div>
+          <div class="mt-2 pt-2 border-t border-gray-100 flex justify-end text-xs text-gray-400">\${overdueFilterKey==='all'?'10일초과 연체율':'연체율'}</div>
         </div>
       </div>
 
       <!-- 담보/신용 그룹 패널 (2/3) -->
       <div class="lg:col-span-2 overflow-hidden">
-        \${ _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap) }
+        \${ _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap, odRateCatMap, odRateGrpMap) }
       </div>
     </div>
   </div>
