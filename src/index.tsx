@@ -3703,7 +3703,7 @@ function renderOcResult() {
   // 금액 합산
   const newOdBal      = newOdList.reduce((s,r)=>s+r.currB,0);
   const resolvedBal   = resolvedList.reduce((s,r)=>s+r.prevB,0);
-  const continuedBal  = continuedList.reduce((s,r)=>s+r.currB,0);
+  const continuedBal  = continuedList.reduce((s,r)=>s+r.prevB,0);
 
   // 전월 d>10 전체 잔고 (연체율 분모)
   const prevOdBal  = prevRecs.filter(r=>r.d>10).reduce((s,r)=>s+(r.b||0),0);
@@ -3731,7 +3731,7 @@ function renderOcResult() {
       if (col === 'p')    return (r.p    || '').toString();
       if (col === 'a')    return (r.a    || '').toString();
       if (col === 'dchg') return type === 'resolved' ? -(r.prevD || 0) : (r.currD || 0) - (r.prevD || 0);
-      /* bal */           return type === 'resolved' ? (r.prevB || 0) : (r.currB || 0);
+      /* bal */           return type === 'new' ? (r.currB || 0) : (r.prevB || 0);
     };
     const sorted = [...list].sort((x, y) => {
       const vx = getVal(x), vy = getVal(y);
@@ -3739,7 +3739,7 @@ function renderOcResult() {
       return dir === 'asc' ? cmp : -cmp;
     });
     return sorted.slice(0,100).map((r,i) => {
-      const dispBal = type==='resolved' ? r.prevB : r.currB;
+      const dispBal = type==='new' ? r.currB : r.prevB;
       const dBadge  = (d) => {
         if(d===0) return '<span style="color:#10b981;font-weight:600">정상</span>';
         if(d<=10) return '<span style="color:#6b7280">'+d+'일</span>';
@@ -3793,7 +3793,7 @@ function renderOcResult() {
     return '<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">'
       + '<div style="padding:14px 18px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">'
       + '<span style="font-size:14px;font-weight:700;color:'+accentColor+'"><i class="fas '+(type==='new'?'fa-arrow-up-right-dots':type==='resolved'?'fa-check-circle':'fa-clock')+' mr-1.5"></i>'+title+'</span>'
-      + '<span style="font-size:12px;color:#6b7280">'+fmtN(list.length)+'건 / '+fmtAmt(list.reduce((s,r)=>s+(type==="resolved"?r.prevB:r.currB),0))+'</span>'
+      + '<span style="font-size:12px;color:#6b7280">'+fmtN(list.length)+'건 / '+fmtAmt(list.reduce((s,r)=>s+(type==="new"?r.currB:r.prevB),0))+'</span>'
       + '</div>'
       + '<div style="overflow-x:auto">'
       + '<table style="width:100%;border-collapse:collapse">'
