@@ -3722,10 +3722,22 @@ function renderOcResult() {
   const totalPrevCno = Object.keys(prevMap).length;
 
   // 테이블 행 생성 헬퍼
-  function mkRows(list, type) {
+  function mkRows(list, type, sortCol, sortDir) {
     if (list.length === 0) return '<tr><td colspan="6" class="text-center py-4 text-gray-400 text-xs">해당 없음</td></tr>';
-    // 잔고 내림차순 정렬
-    const sorted = [...list].sort((a,b)=>(b.currB||b.prevB)-(a.currB||a.prevB));
+    const col  = sortCol  || 'bal';
+    const dir  = sortDir  || 'desc';
+    const getVal = (r) => {
+      if (col === 'cno')  return (r.cno  || '').toString();
+      if (col === 'p')    return (r.p    || '').toString();
+      if (col === 'a')    return (r.a    || '').toString();
+      if (col === 'dchg') return type === 'resolved' ? -(r.prevD || 0) : (r.currD || 0) - (r.prevD || 0);
+      /* bal */           return type === 'resolved' ? (r.prevB || 0) : (r.currB || 0);
+    };
+    const sorted = [...list].sort((x, y) => {
+      const vx = getVal(x), vy = getVal(y);
+      const cmp = (typeof vx === 'string') ? vx.localeCompare(vy, 'ko') : vx - vy;
+      return dir === 'asc' ? cmp : -cmp;
+    });
     return sorted.slice(0,100).map((r,i) => {
       const dispBal = type==='resolved' ? r.prevB : r.currB;
       const dBadge  = (d) => {
@@ -3751,7 +3763,33 @@ function renderOcResult() {
     }).join('') + (sorted.length>100 ? '<tr><td colspan="6" class="text-center py-2 text-xs text-gray-400">외 '+(sorted.length-100)+'건...</td></tr>' : '');
   }
 
-  function mkTable(title, list, type, accentColor) {
+  function mkTable(title, list, type, accentColor, sortCol, sortDir) {
+    const col = sortCol || 'bal';
+    const dir = sortDir || 'desc';
+    // 헤더 컬럼 정의: [colKey, label, align]
+    const cols = [
+      { key: null,   label: 'No',       align: 'center', sortable: false },
+      { key: 'cno',  label: '계약번호',  align: 'left',   sortable: true  },
+      { key: 'p',    label: '상품',      align: 'left',   sortable: true  },
+      { key: 'a',    label: '채널',      align: 'left',   sortable: true  },
+      { key: 'dchg', label: '연체일 변화', align: 'center', sortable: true  },
+      { key: 'bal',  label: '잔고',      align: 'right',  sortable: true  },
+    ];
+    const thStyle = (align, active) =>
+      'padding:8px 10px;font-size:10px;font-weight:600;text-align:'+align+';'
+      + (active ? 'color:#3b82f6;cursor:pointer;user-select:none;white-space:nowrap'
+                : 'color:#9ca3af;cursor:pointer;user-select:none;white-space:nowrap');
+    const sortIcon = (key) => {
+      if (!key) return '';
+      if (col !== key) return ' <span style="color:#d1d5db">⇅</span>';
+      return dir === 'asc' ? ' <span style="color:#3b82f6">▲</span>' : ' <span style="color:#3b82f6">▼</span>';
+    };
+    const ths = cols.map(c =>
+      c.sortable
+        ? '<th data-sort-col="'+c.key+'" data-tab-type="'+type+'" style="'+thStyle(c.align, col===c.key)+'">'+c.label+sortIcon(c.key)+'</th>'
+        : '<th style="'+thStyle(c.align, false)+'">'+c.label+'</th>'
+    ).join('');
+
     return '<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">'
       + '<div style="padding:14px 18px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">'
       + '<span style="font-size:14px;font-weight:700;color:'+accentColor+'"><i class="fas '+(type==='new'?'fa-arrow-up-right-dots':type==='resolved'?'fa-check-circle':'fa-clock')+' mr-1.5"></i>'+title+'</span>'
@@ -3759,15 +3797,8 @@ function renderOcResult() {
       + '</div>'
       + '<div style="overflow-x:auto">'
       + '<table style="width:100%;border-collapse:collapse">'
-      + '<thead><tr style="background:#f8fafd">'
-      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:center">No</th>'
-      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:left">계약번호</th>'
-      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:left">상품</th>'
-      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:left">채널</th>'
-      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:center">연체일 변화</th>'
-      + '<th style="padding:8px 10px;font-size:10px;color:#9ca3af;font-weight:600;text-align:right">잔고</th>'
-      + '</tr></thead>'
-      + '<tbody>' + mkRows(list, type) + '</tbody>'
+      + '<thead><tr style="background:#f8fafd">'+ths+'</tr></thead>'
+      + '<tbody>' + mkRows(list, type, col, dir) + '</tbody>'
       + '</table></div></div>';
   }
 
@@ -3820,12 +3851,16 @@ function renderOcResult() {
     + '</div>'
     // ── 테이블 영역
     + '<div id="oc-table-area">'
-    + mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626')
+    + mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626', 'bal', 'desc')
     + '</div>'
     + '</div>';
 
-  // 탭 전환 함수 (클로저로 저장)
-  window._ocData = { newOdList, resolvedList, continuedList, mkTable };
+  // 탭 전환 함수 (클로저로 저장)  — 정렬 상태도 함께 보관
+  window._ocData = {
+    newOdList, resolvedList, continuedList, mkTable,
+    sortCol: 'bal', sortDir: 'desc',   // 기본: 잔고 내림차순
+    activeTab: 'new'
+  };
 
   // data-tab 버튼에 이벤트 연결 (onclick 인라인 따옴표 충돌 회피)
   setTimeout(() => {
@@ -3833,6 +3868,23 @@ function renderOcResult() {
     if (tabsEl) {
       tabsEl.querySelectorAll('[data-tab]').forEach(btn => {
         btn.addEventListener('click', () => ocTab(btn.getAttribute('data-tab')));
+      });
+    }
+    // 컬럼 헤더 정렬 이벤트 (이벤트 위임 — 테이블 영역 전체)
+    const area = document.getElementById('oc-table-area');
+    if (area) {
+      area.addEventListener('click', e => {
+        const th = e.target.closest('[data-sort-col]');
+        if (!th) return;
+        const clickedCol  = th.getAttribute('data-sort-col');
+        const d           = window._ocData;
+        if (d.sortCol === clickedCol) {
+          d.sortDir = d.sortDir === 'desc' ? 'asc' : 'desc';
+        } else {
+          d.sortCol = clickedCol;
+          d.sortDir = 'desc';
+        }
+        ocTab(d.activeTab);   // 현재 탭 재렌더
       });
     }
   }, 0);
@@ -3845,10 +3897,15 @@ function ocTab(tab) {
   });
   const area = document.getElementById('oc-table-area');
   if (!area || !window._ocData) return;
-  const { newOdList, resolvedList, continuedList, mkTable } = window._ocData;
-  if (tab==='new')       area.innerHTML = mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626');
-  else if(tab==='resolved') area.innerHTML = mkTable('연체 해소 - 정상 전환 (전월 d>10 → 당월 d=0)', resolvedList, 'resolved', '#10b981');
-  else                   area.innerHTML = mkTable('지속 연체 (전월 d>10 → 당월 d>10)', continuedList, 'continued', '#ea580c');
+  const d = window._ocData;
+  d.activeTab = tab;   // 활성 탭 상태 저장
+  const { newOdList, resolvedList, continuedList, mkTable, sortCol, sortDir } = d;
+  if (tab==='new')
+    area.innerHTML = mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626', sortCol, sortDir);
+  else if(tab==='resolved')
+    area.innerHTML = mkTable('연체 해소 - 정상 전환 (전월 d>10 → 당월 d=0)', resolvedList, 'resolved', '#10b981', sortCol, sortDir);
+  else
+    area.innerHTML = mkTable('지속 연체 (전월 d>10 → 당월 d>10)', continuedList, 'continued', '#ea580c', sortCol, sortDir);
 }
 
 // ==================== 페이지: 월별 추이 ====================
