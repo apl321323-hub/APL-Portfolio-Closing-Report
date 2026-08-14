@@ -2818,6 +2818,34 @@ function renderNewLoan(el) {
   const yk  = newLoanSelectedKey.slice(0,4);
   const mok = parseInt(newLoanSelectedKey.slice(4));
 
+  // ── 전월 데이터 추출 (TREND.total.new_loans 기준)
+  // 선택 월 키(예: "202607") → TREND 라벨(예: "26.7월")로 변환
+  const nlCurLabel  = String(yk).slice(2) + '.' + mok + '월';
+  const nlNewArr    = TREND?.total?.new_loans;
+  const nlBalArr    = TREND?.total?.balance;
+  const nlCurIdx    = nlNewArr ? nlNewArr.findIndex(n => n.month === nlCurLabel) : -1;
+  const nlPrevNew   = (nlCurIdx > 0) ? nlNewArr[nlCurIdx - 1] : null;
+  const nlPrevBal   = (nlCurIdx > 0 && nlBalArr) ? nlBalArr[nlCurIdx - 1] : null;
+
+  // 전월 값
+  const prevTotalAmt   = nlPrevNew  ? nlPrevNew.amount  * 100000000 : null;
+  const prevTotalCount = nlPrevNew  ? nlPrevNew.approve               : null;
+  const prevAvgRate    = nlPrevBal  ? nlPrevBal.rate                  : null;
+  const prevAvgAmtPer  = (prevTotalAmt != null && prevTotalCount)
+                         ? prevTotalAmt / prevTotalCount : null;
+
+  // 증감 배지 헬퍼
+  const nlDiff = (cur, prev, fmt, unit='') => {
+    if (prev == null || prev === 0) return '';
+    const diff = cur - prev;
+    const pct  = diff / Math.abs(prev) * 100;
+    if (Math.abs(diff) < 0.001) return \`<span class="text-xs text-gray-400 mt-1 block">전월 동일</span>\`;
+    const up    = diff > 0;
+    const color = up ? '#dc2626' : '#2563eb';
+    const arrow = up ? '▲' : '▼';
+    return \`<span class="text-xs mt-1 block" style="color:\${color}">\${arrow} \${fmt(Math.abs(diff))}\${unit} (\${Math.abs(pct).toFixed(1)}%)</span>\`;
+  };
+
   el.innerHTML = \`
 <div class="space-y-5">
 
@@ -2839,8 +2867,9 @@ function renderNewLoan(el) {
         <span class="badge badge-green">신규</span>
       </div>
       <p class="text-2xl font-bold" style="color:#059669">\${fmtAmt(totalAmt)}</p>
-      <p class="text-xs text-gray-500 mt-1">총 신규 실행액</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCount)}건</p>
+      <p class="text-xs text-gray-500 mt-1">총 신규 실행액 · \${fmtN(totalCount)}건</p>
+      \${nlDiff(totalAmt, prevTotalAmt, v => fmtAmt(v))}
+      \${prevTotalCount != null ? nlDiff(totalCount, prevTotalCount, v => fmtN(Math.round(v)), '건') : ''}
     </div>
     <div class="kpi-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -2849,7 +2878,7 @@ function renderNewLoan(el) {
       </div>
       <p class="text-2xl font-bold" style="color:#d97706">\${avgRate.toFixed(2)}%</p>
       <p class="text-xs text-gray-500 mt-1">평균 정상이율</p>
-      <p class="text-xs text-gray-400 mt-0.5">대출액 가중평균</p>
+      \${nlDiff(avgRate, prevAvgRate, v => v.toFixed(2), '%p')}
     </div>
     <div class="kpi-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -2858,7 +2887,7 @@ function renderNewLoan(el) {
       </div>
       <p class="text-2xl font-bold" style="color:#2563eb">\${(avgAmtPer/10000).toFixed(0)}만</p>
       <p class="text-xs text-gray-500 mt-1">건당 평균 대출액</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCount)}건 평균</p>
+      \${nlDiff(avgAmtPer, prevAvgAmtPer, v => (v/10000).toFixed(0)+'만')}
     </div>
     <div class="kpi-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -2866,8 +2895,7 @@ function renderNewLoan(el) {
         <span class="badge badge-purple">LTV</span>
       </div>
       <p class="text-2xl font-bold" style="color:#9333ea">\${kpiLtv !== null ? kpiLtv.toFixed(1)+'%' : '-'}</p>
-      <p class="text-xs text-gray-500 mt-1">담보 평균 LTV</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(kpiLtvCnt)}건 (담보상품)</p>
+      <p class="text-xs text-gray-500 mt-1">담보 평균 LTV · \${fmtN(kpiLtvCnt)}건</p>
     </div>
   </div>
 
