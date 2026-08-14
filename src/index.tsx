@@ -3685,12 +3685,20 @@ function renderOcResult() {
   let noKeyPrev = prevRecs.filter(r=>!r.cno).length;
   let noKeyCurr = currRecs.filter(r=>!r.cno).length;
 
+  // ── 상환종료 리스트 (전월 d>10인데 당월에 계약번호 없음)
+  const repaidList = [];
   const allCnos = new Set([...Object.keys(prevMap), ...Object.keys(currMap)]);
   allCnos.forEach(cno => {
     const p = prevMap[cno];
     const c = currMap[cno];
-    if (!p || !c) return; // 한 쪽만 있는 경우(신규실행/상환종료) 제외
-    const pd = p.d || 0, cd = c.d || 0;
+    const pd = p ? (p.d || 0) : 0;
+    if (p && !c) {
+      // 당월에 없는 계약 — 전월 연체(d>10)였던 경우만 상환종료로 분류
+      if (pd > 10) repaidList.push({ cno, p: p.p, a: p.a, prevD: pd, currD: null, prevB: p.b||0, currB: 0 });
+      return;
+    }
+    if (!p || !c) return;
+    const cd = c.d || 0;
     if (pd <= 10 && cd > 10) {
       newOdList.push({ cno, p: c.p, a: c.a, prevD: pd, currD: cd, currB: c.b||0, prevB: p.b||0 });
     } else if (pd > 10 && cd <= 10) {
@@ -3704,6 +3712,8 @@ function renderOcResult() {
   const newOdBal      = newOdList.reduce((s,r)=>s+r.currB,0);
   const resolvedBal   = resolvedList.reduce((s,r)=>s+r.prevB,0);
   const continuedBal  = continuedList.reduce((s,r)=>s+r.prevB,0);
+  const repaidBal     = repaidList.reduce((s,r)=>s+r.prevB,0);
+  const totalResolvedBal = resolvedBal + repaidBal;  // 해소 + 상환종료 합산
 
   // 전월 d>10 전체 잔고 (연체율 분모)
   const prevOdBal  = prevRecs.filter(r=>r.d>10).reduce((s,r)=>s+(r.b||0),0);
@@ -3712,11 +3722,13 @@ function renderOcResult() {
   const currOdRate = currTotal>0 ? (currOdBal/currTotal*100).toFixed(2) : '0.00';
 
   // 신규연체율 = 신규연체 잔고 / 전월 전체 잔고
-  const newOdRate    = prevTotal > 0 ? (newOdBal/prevTotal*100).toFixed(2) : '0.00';
-  // 해소율 = 해소 잔고 / 전월 d>10 연체 잔고
-  const resolveRate  = prevOdBal > 0 ? (resolvedBal/prevOdBal*100).toFixed(1) : '0.0';
+  const newOdRate      = prevTotal > 0 ? (newOdBal/prevTotal*100).toFixed(2) : '0.00';
+  // 해소율 = (해소+상환종료) 잔고 / 전월 d>10 연체 잔고
+  const totalResolveRate = prevOdBal > 0 ? (totalResolvedBal/prevOdBal*100).toFixed(1) : '0.0';
+  const resolveRate      = prevOdBal > 0 ? (resolvedBal/prevOdBal*100).toFixed(1) : '0.0';
+  const repaidRate       = prevOdBal > 0 ? (repaidBal/prevOdBal*100).toFixed(1) : '0.0';
   // 잔존율 = 지속연체 잔고 / 전월 d>10 연체 잔고
-  const continueRate = prevOdBal > 0 ? (continuedBal/prevOdBal*100).toFixed(1) : '0.0';
+  const continueRate   = prevOdBal > 0 ? (continuedBal/prevOdBal*100).toFixed(1) : '0.0';
 
   const matchedCnt = Object.keys(prevMap).filter(k=>currMap[k]).length;
   const totalPrevCno = Object.keys(prevMap).length;
@@ -3730,7 +3742,7 @@ function renderOcResult() {
       if (col === 'cno')  return (r.cno  || '').toString();
       if (col === 'p')    return (r.p    || '').toString();
       if (col === 'a')    return (r.a    || '').toString();
-      if (col === 'dchg') return type === 'resolved' ? -(r.prevD || 0) : (r.currD || 0) - (r.prevD || 0);
+      if (col === 'dchg') return (type === 'resolved' || type === 'repaid') ? -(r.prevD || 0) : (r.currD || 0) - (r.prevD || 0);
       /* bal */           return type === 'new' ? (r.currB || 0) : (r.prevB || 0);
     };
     const sorted = [...list].sort((x, y) => {
@@ -3747,7 +3759,9 @@ function renderOcResult() {
         if(d<=90) return '<span style="color:#ea580c;font-weight:600">'+d+'일</span>';
         return '<span style="color:#dc2626;font-weight:600">'+d+'일</span>';
       };
-      const arrow = type==='resolved'
+      const arrow = type==='repaid'
+        ? '<span style="color:#dc2626">'+r.prevD+'일</span> → <span style="color:#6366f1;font-weight:700">상환종료</span>'
+        : type==='resolved'
         ? '<span style="color:#dc2626">'+r.prevD+'일</span> → '+(r.currD===0 ? '<span style="color:#10b981;font-weight:700">정상</span>' : '<span style="color:#6b7280">'+r.currD+'일</span>')
         : type==='new'
           ? '<span style="color:#6b7280">'+(r.prevD||0)+'일</span> → <span style="color:#dc2626;font-weight:700">'+r.currD+'일</span>'
@@ -3825,9 +3839,13 @@ function renderOcResult() {
     + '</div>'
     // 연체해소
     + '<div class="bg-white rounded-xl border border-emerald-200 p-4">'
-    + '<div class="text-xs text-emerald-600 mb-1 font-medium">연체 해소 (d≤10 전환)</div>'
-    + '<div style="font-size:22px;font-weight:800;color:#10b981">' + fmtN(resolvedList.length) + '건</div>'
-    + '<div class="text-xs text-gray-500 mt-1">' + fmtAmt(resolvedBal) + ' / 해소율 <strong>' + resolveRate + '%</strong></div>'
+    + '<div class="text-xs text-emerald-600 mb-1 font-medium">연체 해소 (d≤10 전환 + 상환종료)</div>'
+    + '<div style="font-size:22px;font-weight:800;color:#10b981">' + fmtN(resolvedList.length + repaidList.length) + '건</div>'
+    + '<div class="text-xs text-gray-500 mt-1">' + fmtAmt(totalResolvedBal) + ' / 해소율 <strong>' + totalResolveRate + '%</strong></div>'
+    + '<div class="text-xs text-gray-400 mt-0.5" style="line-height:1.6">'
+    + '해소 ' + fmtAmt(resolvedBal) + ' <span style="color:#10b981">' + resolveRate + '%</span>'
+    + ' &nbsp;|&nbsp; 상환 ' + fmtAmt(repaidBal) + ' <span style="color:#10b981">' + repaidRate + '%</span>'
+    + '</div>'
     + '</div>'
     // 지속연체
     + '<div class="bg-white rounded-xl border border-orange-200 p-4">'
@@ -3847,6 +3865,7 @@ function renderOcResult() {
     + '<div style="display:flex;gap:8px;flex-wrap:wrap" id="oc-tabs">'
     + '<button id="oct-new" class="tab-btn active" data-tab="new">🔴 신규연체 '+fmtN(newOdList.length)+'건</button>'
     + '<button id="oct-resolved" class="tab-btn" data-tab="resolved">✅ 연체해소 '+fmtN(resolvedList.length)+'건</button>'
+    + '<button id="oct-repaid" class="tab-btn" data-tab="repaid">💰 상환종료 '+fmtN(repaidList.length)+'건</button>'
     + '<button id="oct-continued" class="tab-btn" data-tab="continued">⚠️ 지속연체 '+fmtN(continuedList.length)+'건</button>'
     + '</div>'
     // ── 테이블 영역
@@ -3857,7 +3876,7 @@ function renderOcResult() {
 
   // 탭 전환 함수 (클로저로 저장)  — 정렬 상태도 함께 보관
   window._ocData = {
-    newOdList, resolvedList, continuedList, mkTable,
+    newOdList, resolvedList, continuedList, repaidList, mkTable,
     sortCol: 'bal', sortDir: 'desc',   // 기본: 잔고 내림차순
     activeTab: 'new'
   };
@@ -3891,19 +3910,21 @@ function renderOcResult() {
 }
 
 function ocTab(tab) {
-  ['new','resolved','continued'].forEach(t => {
+  ['new','resolved','repaid','continued'].forEach(t => {
     const btn = document.getElementById('oct-'+t);
     if(btn) btn.classList.toggle('active', t===tab);
   });
   const area = document.getElementById('oc-table-area');
   if (!area || !window._ocData) return;
   const d = window._ocData;
-  d.activeTab = tab;   // 활성 탭 상태 저장
-  const { newOdList, resolvedList, continuedList, mkTable, sortCol, sortDir } = d;
+  d.activeTab = tab;
+  const { newOdList, resolvedList, repaidList, continuedList, mkTable, sortCol, sortDir } = d;
   if (tab==='new')
     area.innerHTML = mkTable('신규 연체 발생 (전월 d≤10 → 당월 d>10)', newOdList, 'new', '#dc2626', sortCol, sortDir);
-  else if(tab==='resolved')
+  else if (tab==='resolved')
     area.innerHTML = mkTable('연체 해소 (전월 d>10 → 당월 d≤10)', resolvedList, 'resolved', '#10b981', sortCol, sortDir);
+  else if (tab==='repaid')
+    area.innerHTML = mkTable('상환 종료 (전월 d>10 → 당월 계약 없음)', repaidList, 'repaid', '#6366f1', sortCol, sortDir);
   else
     area.innerHTML = mkTable('지속 연체 (전월 d>10 → 당월 d>10)', continuedList, 'continued', '#ea580c', sortCol, sortDir);
 }
