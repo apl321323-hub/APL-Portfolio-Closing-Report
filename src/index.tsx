@@ -1901,6 +1901,38 @@ function renderBalance(el) {
   const g1Count   = g1Grp ? g1Grp.count : 0;
   const balKpiLtv = g1LtvApp > 0 ? g1LtvW / g1LtvApp * 100 : null;
 
+  // ── 전월 데이터 (TREND 기반)
+  const tBal  = TREND?.total?.balance;
+  const tOver = TREND?.total?.overdue;
+  const curLabel = (() => {
+    if (!LOAN.base_date) return null;
+    const d = new Date(LOAN.base_date);
+    return String(d.getFullYear()).slice(2) + '.' + (d.getMonth()+1) + '월';
+  })();
+  const curIdx  = tBal ? tBal.findIndex(b => b.month === curLabel) : -1;
+  const prevBal = (curIdx > 0) ? tBal[curIdx - 1] : (tBal && tBal.length >= 2 ? tBal[tBal.length - 2] : null);
+
+  // 증감 표시 헬퍼
+  const diffBadge = (cur, prev, fmt, unit='') => {
+    if (prev == null || prev === 0) return '';
+    const diff = cur - prev;
+    const diffPct = (diff / Math.abs(prev) * 100);
+    const isUp = diff > 0;
+    const isZero = Math.abs(diff) < 0.001;
+    if (isZero) return \`<span class="text-xs text-gray-400 mt-1 block">전월 동일</span>\`;
+    const arrow = isUp ? '▲' : '▼';
+    const color = isUp ? '#dc2626' : '#2563eb';
+    return \`<span class="text-xs mt-1 block" style="color:\${color}">
+      \${arrow} \${fmt(Math.abs(diff))}\${unit} (\${Math.abs(diffPct).toFixed(1)}%)
+    </span>\`;
+  };
+
+  // 전월 값
+  const prevTotal   = prevBal ? prevBal.amount * 100000000 : null;
+  const prevCnt     = prevBal ? prevBal.count             : null;
+  const prevRate    = prevBal ? prevBal.rate               : null;
+  const prevAvgAmt  = (prevTotal != null && prevCnt) ? prevTotal / prevCnt : null;
+
   el.innerHTML=\`
 <div class="space-y-5">
   <div class="flex items-center justify-between">
@@ -1919,8 +1951,9 @@ function renderBalance(el) {
         <span class="badge badge-green">잔고</span>
       </div>
       <p class="text-2xl font-bold" style="color:#059669">\${fmtAmt(total)}</p>
-      <p class="text-xs text-gray-500 mt-1">총 잔고</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCnt)}건</p>
+      <p class="text-xs text-gray-500 mt-1">총 잔고 · \${fmtN(totalCnt)}건</p>
+      \${diffBadge(total, prevTotal, v => fmtAmt(v))}
+      \${prevCnt != null ? diffBadge(totalCnt, prevCnt, v => fmtN(Math.round(v)), '건') : ''}
     </div>
     <div class="kpi-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -1929,7 +1962,7 @@ function renderBalance(el) {
       </div>
       <p class="text-2xl font-bold" style="color:#d97706">\${balAvgRate.toFixed(2)}%</p>
       <p class="text-xs text-gray-500 mt-1">평균 정상이율</p>
-      <p class="text-xs text-gray-400 mt-0.5">잔액 가중평균</p>
+      \${diffBadge(balAvgRate, prevRate, v => v.toFixed(2), '%p')}
     </div>
     <div class="kpi-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -1938,7 +1971,7 @@ function renderBalance(el) {
       </div>
       <p class="text-2xl font-bold" style="color:#2563eb">\${(balAvgAmt/10000).toFixed(0)}만</p>
       <p class="text-xs text-gray-500 mt-1">건당 평균 잔고</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(totalCnt)}건 평균</p>
+      \${diffBadge(balAvgAmt, prevAvgAmt, v => (v/10000).toFixed(0)+'만')}
     </div>
     <div class="kpi-card p-5">
       <div class="flex items-center justify-between mb-3">
@@ -1946,8 +1979,7 @@ function renderBalance(el) {
         <span class="badge badge-purple">LTV</span>
       </div>
       <p class="text-2xl font-bold" style="color:#9333ea">\${balKpiLtv !== null ? balKpiLtv.toFixed(1)+'%' : '-'}</p>
-      <p class="text-xs text-gray-500 mt-1">담보 평균 LTV</p>
-      <p class="text-xs text-gray-400 mt-0.5">\${fmtN(g1Count)}건 (담보상품)</p>
+      <p class="text-xs text-gray-500 mt-1">담보 평균 LTV · \${fmtN(g1Count)}건</p>
     </div>
   </div>
 
