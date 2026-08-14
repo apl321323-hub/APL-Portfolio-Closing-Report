@@ -40,6 +40,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
 .sb-item .sb-icon{width:20px;text-align:center;flex-shrink:0;font-size:14px;}
 .sb-item .sb-label{overflow:hidden;text-overflow:ellipsis;}
 .sb-badge{margin-left:auto;background:rgba(255,255,255,.2);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;flex-shrink:0;}
+.sb-wip{margin-left:auto;background:#f59e0b;color:#1a1a1a;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;flex-shrink:0;letter-spacing:.3px;}
 .sb-divider{border-top:1px solid rgba(255,255,255,.08);margin:8px 14px;}
 
 /* 월 셀렉터 (사이드바 하단) */
@@ -166,6 +167,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-item active" data-page="overview" onclick="goPage('overview')">
         <i class="sb-icon fas fa-tachometer-alt"></i>
         <span class="sb-label">종합 개요</span>
+        <span class="sb-wip">준비중</span>
       </div>
       <div class="sb-item" data-page="balance" onclick="goPage('balance')">
         <i class="sb-icon fas fa-layer-group"></i>
@@ -174,6 +176,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-item" data-page="product" onclick="goPage('product')">
         <i class="sb-icon fas fa-tags"></i>
         <span class="sb-label">상품 분석</span>
+        <span class="sb-wip">준비중</span>
       </div>
       <div class="sb-item" data-page="agent" onclick="goPage('agent')">
         <i class="sb-icon fas fa-users"></i>
@@ -191,6 +194,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-item" data-page="trend" onclick="goPage('trend')">
         <i class="sb-icon fas fa-chart-line"></i>
         <span class="sb-label">월별 추이</span>
+        <span class="sb-wip">준비중</span>
       </div>
 
       <div class="sb-divider"></div>
