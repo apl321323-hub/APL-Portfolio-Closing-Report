@@ -4065,8 +4065,10 @@ function calcRealestateStats(records, loanTypeName) {
 
 function renderRealestate(el) {
   const db = getMonthsDB();
-  const entries = Object.values(db).filter(v=>v&&v.base_date&&v.records)
-                    .sort((a,b)=>b.base_date.localeCompare(a.base_date));
+  // entries: [{key:'202606', data:{base_date,records,...}}] 형태 — yyyymm 키 유지
+  const entries = Object.entries(db)
+    .filter(([k,v])=>v&&v.base_date&&v.records)
+    .sort((a,b)=>b[0].localeCompare(a[0])); // 최신순
   if (!entries.length) {
     el.innerHTML = '<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">'
       + '<i class="fas fa-building text-5xl text-blue-200"></i>'
@@ -4076,10 +4078,13 @@ function renderRealestate(el) {
       + '<i class="fas fa-upload mr-2"></i>결산자료 업로드</button></div>';
     return;
   }
-  const dateList = entries.map(e=>e.base_date);
-  if (!window._reSelDate || !db[window._reSelDate]) window._reSelDate = dateList[0];
-  const selDate = window._reSelDate;
-  const dataset = db[selDate];
+  // selKey: yyyymm 형식 (ex: '202606')
+  const keyList  = entries.map(([k])=>k);
+  const dateList = entries.map(([k,v])=>v.base_date);
+  if (!window._reSelKey || !db[window._reSelKey]) window._reSelKey = keyList[0];
+  const selKey  = window._reSelKey;
+  const selDate = db[selKey].base_date;
+  const dataset = db[selKey];
   if (!dataset) { el.innerHTML='<div class="text-gray-400 p-8">데이터 없음</div>'; return; }
   const reSelLoanType = window._reLoanType || 'loan';
   const LT = { loan:'담보론', loanShare:'담보론(지분대출)' };
@@ -4205,9 +4210,9 @@ function renderRealestate(el) {
     + Object.entries(LT).map(([k,v])=>'<button data-lt="'+k+'" onclick="window._reLoanType=this.dataset.lt;renderPage()" class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all '+(k===reSelLoanType?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300')+'">'+ v+'</button>').join('')
     + '</div>';
 
-  // ── 기준월 select
-  const dateSelHtml = '<select onchange="window._reSelDate=this.value;renderPage()" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 font-medium">'
-    + dateList.map(d=>'<option value="'+d+'"'+(d===selDate?' selected':'')+'>'+d+'</option>').join('')
+  // ── 기준월 select (value = yyyymm 키)
+  const dateSelHtml = '<select onchange="window._reSelKey=this.value;renderPage()" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 font-medium">'
+    + keyList.map((k,i)=>'<option value="'+k+'"'+(k===selKey?' selected':'')+'>'+dateList[i]+'</option>').join('')
     + '</select>';
 
   el.innerHTML = '<div class="space-y-5">'
