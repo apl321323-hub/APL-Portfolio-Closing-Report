@@ -3175,6 +3175,9 @@ function selectNewLoanMonth(key) {
 }
 
 // ==================== 페이지: 연체 현황 ====================
+// ── 연체 카테고리 구성 패널 상태 (선택 필터: 'all' | 'od10' | 'od30' | 'od90')
+let overdueFilterKey = 'all';
+
 function renderOverdue(el) {
   const all = LOAN.records;
   const totalBal = all.reduce((s,r)=>s+r.b, 0);
@@ -3196,17 +3199,17 @@ function renderOverdue(el) {
   for(const k in seg) g[k] = S(seg[k]);
 
   // 카드별 상위 합계 (구성비 분모 = 전체잔고)
-  const card1 = g.r0;                                                     // 정상
+  const card1 = g.r0;
   const card2 = { cnt: g.r30.cnt+g.r60.cnt+g.r90.cnt+g.r120.cnt+g.r180.cnt+g.rInf.cnt,
-                   amt: g.r30.amt+g.r60.amt+g.r90.amt+g.r120.amt+g.r180.amt+g.rInf.amt };  // 10일 초과
+                   amt: g.r30.amt+g.r60.amt+g.r90.amt+g.r120.amt+g.r180.amt+g.rInf.amt };
   const card3 = { cnt: g.r60.cnt+g.r90.cnt+g.r120.cnt+g.r180.cnt+g.rInf.cnt,
-                   amt: g.r60.amt+g.r90.amt+g.r120.amt+g.r180.amt+g.rInf.amt };            // 30일 초과
+                   amt: g.r60.amt+g.r90.amt+g.r120.amt+g.r180.amt+g.rInf.amt };
   const card4 = { cnt: g.r120.cnt+g.r180.cnt+g.rInf.cnt,
-                   amt: g.r120.amt+g.r180.amt+g.rInf.amt };                                // 90일 초과
+                   amt: g.r120.amt+g.r180.amt+g.rInf.amt };
 
   const pct = (amt) => totalBal > 0 ? (amt/totalBal*100).toFixed(1)+'%' : '-';
 
-  // ── 서브행 렌더러: 라벨 / 레코드집계 / 색상
+  // ── 서브행 렌더러
   const subRow = (label, gk, col) => {
     const d = g[gk];
     if(!d || d.cnt===0) return '';
@@ -3220,12 +3223,11 @@ function renderOverdue(el) {
     </div>\`;
   };
 
-  // ── 카드 렌더러
+  // ── KPI 카드 렌더러
   const mkCard = (title, badge, iconCls, mainColor, bgColor, mainData, subHtml) => {
     const amtPct = pct(mainData.amt);
     return \`
     <div class="kpi-card p-5 flex flex-col">
-      <!-- 헤더 -->
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2">
           <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:\${bgColor}">
@@ -3235,7 +3237,6 @@ function renderOverdue(el) {
         </div>
         <span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:\${bgColor};color:\${mainColor}">\${badge}</span>
       </div>
-      <!-- 메인 지표: 금액·구성비 강조 -->
       <div class="mb-1">
         <p class="text-2xl font-black tracking-tight" style="color:\${mainColor}">\${fmtAmt(mainData.amt)}</p>
         <div class="flex items-baseline gap-2 mt-0.5">
@@ -3243,12 +3244,58 @@ function renderOverdue(el) {
           <span class="text-xs text-gray-400">(\${fmtN(mainData.cnt)}건)</span>
         </div>
       </div>
-      <!-- 서브 구간 -->
       <div class="mt-auto">\${subHtml}</div>
     </div>\`;
   };
 
-  const pMap=aggregateByProduct();
+  // ── 카테고리·그룹 패널 집계 (필터 적용)
+  // 필터별 대상 레코드
+  const filterRecs = overdueFilterKey === 'od90' ? all.filter(r=>r.d>90)
+                   : overdueFilterKey === 'od30' ? all.filter(r=>r.d>30)
+                   : overdueFilterKey === 'od10' ? all.filter(r=>r.d>10)
+                   : all;
+  const filterBal = filterRecs.reduce((s,r)=>s+r.b, 0);
+
+  // ── 카테고리 집계 (파이차트용)
+  const odCatMap = {};
+  CATEGORIES.forEach(c => { odCatMap[c.id] = {...c, count:0, bal:0}; });
+  odCatMap['__none__'] = {id:'__none__', name:'미분류', color:'#9ca3af', count:0, bal:0};
+  filterRecs.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '');
+    const cm  = odCatMap[cat.id] || odCatMap['__none__'];
+    cm.count++; cm.bal += r.b;
+  });
+  const odCatArr = Object.values(odCatMap).filter(c=>c.count>0).sort((a,b)=>b.bal-a.bal);
+
+  // ── 그룹 패널 집계 (담보/신용 패널용)
+  const odGrpMap = {};
+  GROUPS.forEach(g2 => {
+    odGrpMap[g2.id] = { id:g2.id, name:g2.name, color:g2.color, count:0, bal:0, rWSum:0, rBSum:0, cats:{} };
+  });
+  filterRecs.forEach(r => {
+    const cat = getCategoryOfProduct(r.p || '');
+    const grp = getGroupOfCategory(cat.id);
+    const gm  = odGrpMap[grp.id];
+    if(!gm) return;
+    gm.count++; gm.bal += r.b;
+    if(r.r>0){ gm.rWSum += r.b*r.r; gm.rBSum += r.b; }
+    if(!gm.cats[cat.id]) gm.cats[cat.id] = {id:cat.id, name:cat.name, color:cat.color, order:cat.order||99, count:0, bal:0, rWSum:0, rBSum:0};
+    const cm = gm.cats[cat.id];
+    cm.count++; cm.bal += r.b;
+    if(r.r>0){ cm.rWSum += r.b*r.r; cm.rBSum += r.b; }
+  });
+  const odGrpArr = Object.values(odGrpMap).filter(g2=>g2.count>0)
+    .sort((a,b)=>GROUPS.findIndex(g2=>g2.id===a.id)-GROUPS.findIndex(g2=>g2.id===b.id));
+
+  const pMap = aggregateByProduct();
+
+  // ── 필터 탭 버튼
+  const filterTabs = [
+    { key:'all',  label:'전체',      color:'#374151' },
+    { key:'od10', label:'10일 초과', color:'#d97706' },
+    { key:'od30', label:'30일 초과', color:'#dc2626' },
+    { key:'od90', label:'90일 초과', color:'#7c2d12' },
+  ];
 
   el.innerHTML=\`
 <div class="space-y-5">
@@ -3256,34 +3303,112 @@ function renderOverdue(el) {
 
   <!-- KPI 4카드 -->
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    \${mkCard('정상(0일)', '정상', 'fas fa-check-circle', '#059669', '#f0fdf4', card1,
+      subRow('1~10일', 'r10', '#65a30d'))}
+    \${mkCard('10일 초과', '주의', 'fas fa-exclamation-circle', '#d97706', '#fff7ed', card2,
+      subRow('11~30일', 'r30', '#f97316'))}
+    \${mkCard('30일 초과', '경고', 'fas fa-triangle-exclamation', '#dc2626', '#fef2f2', card3,
+      subRow('31~60일', 'r60', '#ef4444') + subRow('61~90일', 'r90', '#b91c1c'))}
+    \${mkCard('90일 초과', '위험', 'fas fa-skull-crossbones', '#7c2d12', '#fdf4ff', card4,
+      subRow('91~120일', 'r120', '#9333ea') + subRow('121~180일', 'r180', '#7e22ce') + subRow('180일 초과', 'rInf', '#581c87'))}
+  </div>
 
-    <!-- 1. 정상 -->
-    \${mkCard('정상(0일)', '정상', 'fas fa-check-circle', '#059669', '#f0fdf4',
-      card1,
-      subRow('1~10일', 'r10', '#65a30d')
-    )}
+  <!-- ── 카테고리 구성 패널 (신규대출 스타일) ── -->
+  <div class="card overflow-hidden">
+    <!-- 패널 헤더 + 필터 탭 -->
+    <div class="flex items-center justify-between flex-wrap gap-3 p-4 border-b border-gray-100">
+      <h3 class="text-sm font-bold text-gray-700">
+        <i class="fas fa-layer-group mr-2 text-indigo-500"></i>카테고리·그룹별 연체 구성
+        <span class="text-xs font-normal text-gray-400 ml-2">\${filterBal>0?fmtAmt(filterBal)+' / '+fmtN(filterRecs.length)+'건':''}</span>
+      </h3>
+      <div class="flex gap-1.5 flex-wrap">
+        \${filterTabs.map(t => \`
+          <button onclick="setOverdueFilter('\${t.key}')"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
+            style="\${overdueFilterKey===t.key
+              ? 'background:'+t.color+';color:#fff;border-color:'+t.color
+              : 'background:#fff;color:'+t.color+';border-color:#e5e7eb'}">
+            \${t.label}
+          </button>
+        \`).join('')}
+      </div>
+    </div>
 
-    <!-- 2. 10일 초과 -->
-    \${mkCard('10일 초과', '주의', 'fas fa-exclamation-circle', '#d97706', '#fff7ed',
-      card2,
-      subRow('11~30일', 'r30', '#f97316')
-    )}
+    <!-- 파이 + 그룹 패널 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3">
+      <!-- 카테고리 파이차트 (1/3) -->
+      <div class="p-5 border-b lg:border-b-0 lg:border-r border-gray-100">
+        <p class="text-xs font-bold text-gray-500 mb-3"><i class="fas fa-chart-pie mr-1.5 text-blue-500"></i>카테고리 구성비</p>
+        <div style="height:190px"><canvas id="od-cat-pie"></canvas></div>
+        <div class="mt-3 space-y-1.5">
+          \${odCatArr.map(c => {
+            const cp = filterBal>0 ? (c.bal/filterBal*100).toFixed(1) : '0.0';
+            return \`<div class="flex items-center gap-2 text-xs">
+              <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:\${c.color}"></div>
+              <span class="flex-1 truncate text-gray-600">\${c.name}</span>
+              <span class="font-bold" style="color:\${c.color}">\${cp}%</span>
+              <span class="text-gray-400">\${fmtAmt(c.bal)}</span>
+            </div>\`;
+          }).join('')}
+        </div>
+      </div>
 
-    <!-- 3. 30일 초과 -->
-    \${mkCard('30일 초과', '경고', 'fas fa-triangle-exclamation', '#dc2626', '#fef2f2',
-      card3,
-      subRow('31~60일', 'r60', '#ef4444') +
-      subRow('61~90일', 'r90', '#b91c1c')
-    )}
-
-    <!-- 4. 90일 초과 -->
-    \${mkCard('90일 초과', '위험', 'fas fa-skull-crossbones', '#7c2d12', '#fdf4ff',
-      card4,
-      subRow('91~120일',  'r120', '#9333ea') +
-      subRow('121~180일', 'r180', '#7e22ce') +
-      subRow('180일 초과','rInf', '#581c87')
-    )}
-
+      <!-- 담보/신용 그룹 패널 (2/3) -->
+      <div class="lg:col-span-2 overflow-hidden">
+        \${filterRecs.length === 0
+          ? \`<div class="flex items-center justify-center h-40 text-gray-400 text-sm">해당 연체 건수 없음</div>\`
+          : \`<div style="display:grid;grid-template-columns:repeat(\${odGrpArr.length},1fr);height:100%">
+              \${odGrpArr.map((gd, gi) => {
+                const gPct   = filterBal > 0 ? (gd.bal / filterBal * 100) : 0;
+                const gAvgR  = gd.rBSum > 0 ? (gd.rWSum / gd.rBSum).toFixed(2) : '-';
+                const borderR = gi < odGrpArr.length - 1 ? 'border-right:1px solid #e5e7eb' : '';
+                const catRows = Object.values(gd.cats)
+                  .sort((a,b)=>(a.order||99)-(b.order||99))
+                  .map(c => {
+                    const cPct  = filterBal > 0 ? (c.bal / filterBal * 100) : 0;
+                    const cGpct = gd.bal > 0 ? (c.bal / gd.bal * 100) : 0;
+                    const cAvgR = c.rBSum > 0 ? (c.rWSum / c.rBSum).toFixed(2) : '-';
+                    return \\\`<tr style="border-top:1px solid #f3f4f6">
+                      <td style="padding:7px 8px;width:14px">
+                        <div style="width:9px;height:9px;border-radius:50%;background:\\\${c.color}"></div>
+                      </td>
+                      <td style="padding:7px 4px;white-space:nowrap">
+                        <span style="font-size:12px;font-weight:700;color:#374151">\\\${c.name}</span>
+                      </td>
+                      <td style="padding:7px 4px;text-align:right">
+                        <span style="font-size:14px;font-weight:900;color:\\\${c.color}">\\\${cPct.toFixed(1)}%</span>
+                        <div style="font-size:10px;color:#9ca3af">그룹내 \\\${cGpct.toFixed(1)}%</div>
+                      </td>
+                      <td style="padding:7px 4px;text-align:right">
+                        <span style="font-size:12px;font-weight:600;color:#1f2937">\\\${fmtAmt(c.bal)}</span>
+                        <div style="font-size:10px;color:#9ca3af">\\\${fmtN(c.count)}건</div>
+                      </td>
+                      <td style="padding:7px 4px;text-align:right">
+                        <span style="font-size:11px;color:#6b7280">금리 <b style="color:#374151">\\\${cAvgR}%</b></span>
+                      </td>
+                    </tr>\\\`;
+                  }).join('');
+                return \\\`<div style="\\\${borderR}">
+                  <div style="background:\\\${gd.color};padding:8px 14px;text-align:center">
+                    <span style="color:#fff;font-size:13px;font-weight:700">\\\${gd.name}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px 7px;background:\\\${gd.color}08;border-bottom:1px solid \\\${gd.color}20">
+                    <div style="display:flex;align-items:center;gap:5px">
+                      <div style="width:9px;height:9px;border-radius:50%;background:\\\${gd.color}"></div>
+                      <span style="font-size:20px;font-weight:900;line-height:1;color:\\\${gd.color}">\\\${gPct.toFixed(1)}%</span>
+                    </div>
+                    <div style="display:flex;gap:8px;font-size:10px;color:#6b7280;flex-wrap:wrap;justify-content:flex-end">
+                      <span>\\\${fmtAmt(gd.bal)} / \\\${fmtN(gd.count)}건</span>
+                      <span>금리 <b style="color:#374151">\\\${gAvgR}%</b></span>
+                    </div>
+                  </div>
+                  <table style="width:100%;border-collapse:collapse"><tbody>\\\${catRows}</tbody></table>
+                </div>\\\`;
+              }).join('')}
+            </div>\`
+        }
+      </div>
+    </div>
   </div>
 
   <!-- 차트 & 추이 -->
@@ -3312,15 +3437,14 @@ function renderOverdue(el) {
         <tbody>\${Object.entries(pMap)
           .sort((a,b)=>(b[1].bal10+b[1].bal30_+b[1].bal60+b[1].bal90+b[1].balMore)-(a[1].bal10+a[1].bal30_+a[1].bal60+a[1].bal90+a[1].balMore))
           .map(([p,v])=>{
-            const totalAmt = v.bal0+v.bal10+v.bal30_+v.bal60+v.bal90+(v.balMore||0);
-            const odAmt    = v.bal10+v.bal30_+v.bal60+v.bal90+(v.balMore||0);
-            const od30Amt  = v.bal30_+v.bal60+v.bal90+(v.balMore||0);
-            const od90Amt  = v.balMore||0;
-            const odCnt    = v.overdue10+v.overdue30+v.overdue60+v.overdue90+(v.overdueMore||0);
-            const odR      = totalAmt>0 ? (odAmt/totalAmt*100).toFixed(1) : '0';
+            const tAmt = v.bal0+v.bal10+v.bal30_+v.bal60+v.bal90+(v.balMore||0);
+            const odAmt   = v.bal10+v.bal30_+v.bal60+v.bal90+(v.balMore||0);
+            const od30Amt = v.bal30_+v.bal60+v.bal90+(v.balMore||0);
+            const od90Amt = v.balMore||0;
+            const odR     = tAmt>0 ? (odAmt/tAmt*100).toFixed(1) : '0';
             return \`<tr>
               <td class="font-medium">\${p}</td>
-              <td class="text-right">\${fmtAmt(totalAmt)}</td>
+              <td class="text-right">\${fmtAmt(tAmt)}</td>
               <td class="text-right font-bold" style="color:#d97706">\${fmtAmt(odAmt)}</td>
               <td class="text-right font-bold \${parseFloat(odR)>=10?'text-red-600':parseFloat(odR)>=5?'text-orange-500':''}">\${odR}%</td>
               <td class="text-right text-red-500">\${fmtAmt(od30Amt)}</td>
@@ -3334,7 +3458,7 @@ function renderOverdue(el) {
   </div>
 </div>\`;
 
-  // ── 차트
+  // ── 차트 렌더링
   const barBands = [
     {label:'정상(0일)', amt:g.r0.amt,   cnt:g.r0.cnt,   color:'#059669'},
     {label:'1~10일',    amt:g.r10.amt,  cnt:g.r10.cnt,  color:'#84cc16'},
@@ -3346,6 +3470,10 @@ function renderOverdue(el) {
     {label:'180일↑',    amt:g.rInf.amt, cnt:g.rInf.cnt, color:'#581c87'},
   ];
   setTimeout(()=>{
+    // 카테고리 파이
+    if(odCatArr.length>0)
+      mkPie('od-cat-pie', odCatArr.map(c=>c.name), odCatArr.map(c=>c.bal), odCatArr.map(c=>c.color));
+    // 구간별 바 차트
     mkBar('od-bar', barBands.map(b=>b.label), [
       {label:'잔고(억)', data:barBands.map(b=>+(b.amt/100000000).toFixed(2)),
        backgroundColor:barBands.map(b=>b.color+'cc'), yAxisID:'y'},
@@ -3361,6 +3489,13 @@ function renderOverdue(el) {
       {label:'30일연체율', data:TREND.total.overdue.map(o=>o.rate_30), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.08)', fill:true}
     ],{pct:true});
   },50);
+}
+
+// 필터 선택 → 연체 페이지 재렌더
+function setOverdueFilter(key) {
+  overdueFilterKey = key;
+  const el = document.getElementById('main-content');
+  renderOverdue(el);
 }
 
 // ==================== 페이지: 월별 추이 ====================
