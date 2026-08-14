@@ -4072,7 +4072,7 @@ function renderRealestate(el) {
       + '<i class="fas fa-building text-5xl text-blue-200"></i>'
       + '<p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>'
       + '<p class="text-sm">결산자료를 업로드하면 담보론 부동산 현황이 자동으로 표시됩니다</p>'
-      + '<button onclick="goPage('upload')" class="mt-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">'
+      + '<button data-page="upload" onclick="goPage(this.dataset.page)" class="mt-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">'
       + '<i class="fas fa-upload mr-2"></i>결산자료 업로드</button></div>';
     return;
   }
@@ -4202,7 +4202,7 @@ function renderRealestate(el) {
 
   // ── 대출유형 탭
   const loanTabsHtml = '<div class="flex gap-2">'
-    + Object.entries(LT).map(([k,v])=>'<button onclick="window._reLoanType=''+k+'';renderPage()" class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all '+(k===reSelLoanType?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300')+'">'+v+'</button>').join('')
+    + Object.entries(LT).map(([k,v])=>'<button data-lt="'+k+'" onclick="window._reLoanType=this.dataset.lt;renderPage()" class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all '+(k===reSelLoanType?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300')+'">'+ v+'</button>').join('')
     + '</div>';
 
   // ── 기준월 select
