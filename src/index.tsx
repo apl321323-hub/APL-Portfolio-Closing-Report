@@ -620,7 +620,7 @@ async function init() {
       document.getElementById('hdr-date').textContent = '추이: ' + (TREND?.generated_at || '-');
     }
 
-    refreshSidebarMonths();
+    await refreshSidebarMonths();
     await augmentTrendFromStorage(); // IDB 결산자료로 TREND 누락 월 보완
     await renderPage();
 
@@ -630,8 +630,9 @@ async function init() {
       if (badge) badge.textContent = Object.keys(getContractDB()).length;
     });
   } catch(e) {
-    document.getElementById('main-content').innerHTML =
-      '<div class="flex items-center justify-center h-64 text-red-500"><i class="fas fa-exclamation-circle mr-2"></i>초기 로드 실패: '+e.message+'</div>';
+    console.error('[init] 초기화 실패:', e);
+    const mc = document.getElementById('main-content');
+    if (mc) mc.innerHTML = '<div class="flex flex-col items-center justify-center h-64 gap-2 text-red-500"><i class="fas fa-exclamation-circle text-3xl"></i><p class="font-bold">초기 로드 실패</p><p class="text-sm text-gray-500">' + (e.message||String(e)) + '</p></div>';
   }
 }
 
@@ -3719,7 +3720,7 @@ async function renderOverdue(el) {
       y1:{type:'linear',position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>v+'건'}}
     }}});
     // 월별 연체율 추이: 결산자료(loan_data) 다월 레코드 직접 계산
-    {
+    (async () => {
       const mdb = await getMonthsDB();
       // 날짜순 정렬된 월 목록 추출
       const mEntries = Object.entries(mdb)
@@ -3748,7 +3749,7 @@ async function renderOverdue(el) {
           {label:'30일↑연체율'+sfx, data:tData30, borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.08)', fill:true}
         ],{pct:true});
       }
-    }
+    })();
   },50);
   } catch(err) {
     console.error('[renderOverdue] 에러:', err);
