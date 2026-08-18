@@ -4041,12 +4041,17 @@ function calcRealestateStats(records, loanTypeName) {
     return o;
   };
   const addTo = (slot, r) => { slot.cnt++; slot.bal += (r.b||0); };
+  // 실질 LTV 계산: loanAmt/appraised 우선, 없으면 r.ltv fallback
+  const calcLtv = r => {
+    if ((r.appraised||0) > 0 && (r.loanAmt||0) > 0) return r.loanAmt / r.appraised * 100;
+    return r.ltv || 0;
+  };
   const addBand = (bands, r) => {
     addTo(bands.total, r);
-    const ltv = r.ltv || 0;
+    const ltv = calcLtv(r);
     RE_LTV_BANDS.forEach(b => { if(b.test(ltv)) addTo(bands[b.key], r); });
   };
-  // 잔고가중 평균 LTV / 평균 금리 집계
+  // 잔고가중 평균 LTV (실질) / 평균 금리 집계
   let ltvWSum = 0, ltvBalSum = 0, rWSum = 0, rBSum = 0;
   const summary = { all: zeroBands(), od: zeroBands(), nonOd: zeroBands() };
   const byRegion = {}, byColtype = {}, byRC = {};
@@ -4066,9 +4071,10 @@ function calcRealestateStats(records, loanTypeName) {
     if (!byRC[key]) byRC[key] = {grp,ct,all:zeroBands(),od:zeroBands(),nonOd:zeroBands()};
     addBand(byRC[key].all, r);
     if (od) addBand(byRC[key].od, r); else addBand(byRC[key].nonOd, r);
-    // 평균 LTV: ltv 값이 있고 잔고 > 0
-    if ((r.ltv||0) > 0 && (r.b||0) > 0) { ltvWSum += r.b * r.ltv; ltvBalSum += r.b; }
-    // 평균 금리: r 필드 (rate)가 있고 잔고 > 0
+    // 평균 LTV: 실질 LTV(loanAmt/appraised) 기준, 잔고 > 0
+    const realLtv = calcLtv(r);
+    if (realLtv > 0 && (r.b||0) > 0) { ltvWSum += r.b * realLtv; ltvBalSum += r.b; }
+    // 평균 금리: r 필드가 있고 잔고 > 0
     if ((r.r||0) > 0 && (r.b||0) > 0) { rWSum += r.b * r.r; rBSum += r.b; }
   });
   const avgLtv  = ltvBalSum > 0 ? (ltvWSum  / ltvBalSum).toFixed(1) : null;
