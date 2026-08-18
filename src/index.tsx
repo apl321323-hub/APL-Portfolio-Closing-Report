@@ -3559,10 +3559,11 @@ function renderOverdue(el) {
         <p class="text-xs font-bold text-gray-500 mb-2"><i class="fas fa-chart-bar mr-1.5 text-red-400"></i>연체 구간별 잔고 현황</p>
         <div class="chart-wrap-lg"><canvas id="od-bar"></canvas></div>
       </div>
-      \${(()=>{ const _mdb=getMonthsDB(); const _mc=Object.values(_mdb).filter(v=>v&&v.records&&v.base_date).length; return _mc>=1; })()?\`<div>
+      <div>
         <p class="text-xs font-bold text-gray-500 mb-2"><i class="fas fa-chart-line mr-1.5 text-orange-400"></i>월별 연체율 추이 <span class="text-gray-400 font-normal">(결산자료 기준)</span></p>
         <div class="chart-wrap-lg"><canvas id="od-trend"></canvas></div>
-      </div>\`:''}    </div>
+      </div>
+    </div>
   </div>
 
   <!-- 상품별 연체 현황 테이블 -->
@@ -3691,6 +3692,9 @@ function setOverdueChartGroup(grp) {
   const el = document.getElementById('main-content');
   renderOverdue(el);
 }
+// inline onclick handler에서 접근할 수 있도록 window에 명시 등록
+window.setOverdueFilter     = setOverdueFilter;
+window.setOverdueChartGroup = setOverdueChartGroup;
 
 // ==================== 페이지: 연체 변동 분석 ====================
 function renderOverdueChange(el) {
