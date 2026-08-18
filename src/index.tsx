@@ -4046,6 +4046,8 @@ function calcRealestateStats(records, loanTypeName) {
     const ltv = r.ltv || 0;
     RE_LTV_BANDS.forEach(b => { if(b.test(ltv)) addTo(bands[b.key], r); });
   };
+  // 잔고가중 평균 LTV / 평균 금리 집계
+  let ltvWSum = 0, ltvBalSum = 0, rWSum = 0, rBSum = 0;
   const summary = { all: zeroBands(), od: zeroBands(), nonOd: zeroBands() };
   const byRegion = {}, byColtype = {}, byRC = {};
   filtered.forEach(r => {
@@ -4064,8 +4066,14 @@ function calcRealestateStats(records, loanTypeName) {
     if (!byRC[key]) byRC[key] = {grp,ct,all:zeroBands(),od:zeroBands(),nonOd:zeroBands()};
     addBand(byRC[key].all, r);
     if (od) addBand(byRC[key].od, r); else addBand(byRC[key].nonOd, r);
+    // 평균 LTV: ltv 값이 있고 잔고 > 0
+    if ((r.ltv||0) > 0 && (r.b||0) > 0) { ltvWSum += r.b * r.ltv; ltvBalSum += r.b; }
+    // 평균 금리: r 필드 (rate)가 있고 잔고 > 0
+    if ((r.r||0) > 0 && (r.b||0) > 0) { rWSum += r.b * r.r; rBSum += r.b; }
   });
-  return { summary, byRegion, byColtype, byRC };
+  const avgLtv  = ltvBalSum > 0 ? (ltvWSum  / ltvBalSum).toFixed(1) : null;
+  const avgRate = rBSum     > 0 ? (rWSum    / rBSum    ).toFixed(2) : null;
+  return { summary, byRegion, byColtype, byRC, avgLtv, avgRate };
 }
 
 function renderRealestate(el) {
@@ -4102,6 +4110,8 @@ function renderRealestate(el) {
   const nonOdBal = S.nonOd.total.bal, nonOdCnt = S.nonOd.total.cnt;
   const odRate   = totalBal>0 ? (odBal/totalBal*100).toFixed(2) : '0.00';
   const ltv85pBal= S.all.ltv85p.bal;
+  const avgLtv   = stats.avgLtv;   // 잔고가중 평균 LTV (%)
+  const avgRate  = stats.avgRate;  // 잔고가중 평균 금리 (%)
   const ltvUsed  = RE_LTV_BANDS.filter(b => S.all[b.key].bal > 0);
   const regionRows = RE_REGIONS_ORDER.map(grp => {
     const d = stats.byRegion[grp]; if(!d) return null;
@@ -4325,12 +4335,13 @@ function renderRealestate(el) {
     + dateSelHtml + '</div>'
     + loanTabsHtml
     + (totalCnt===0 ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700"><i class="fas fa-info-circle mr-2"></i>선택한 결산자료에 <b>'+loanTypeLabel+'</b> 계약이 없습니다.</div>' : '')
-    // KPI 카드
-    + '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">'
+    // KPI 카드 (5개: 전체 잔고 / 연체 / 미연체 / 평균 LTV / 평균 금리)
+    + '<div class="grid grid-cols-2 md:grid-cols-5 gap-4">'
     + '<div class="bg-white rounded-xl border border-blue-200 p-4"><div class="text-xs text-blue-600 mb-1 font-medium"><i class="fas fa-coins mr-1"></i>전체 잔고</div><div style="font-size:22px;font-weight:800;color:#1d4ed8">'+fmtChun(totalBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(totalCnt)+'</div></div>'
     + '<div class="bg-white rounded-xl border border-red-200 p-4"><div class="text-xs text-red-600 mb-1 font-medium"><i class="fas fa-exclamation-triangle mr-1"></i>연체 잔고</div><div style="font-size:22px;font-weight:800;color:#dc2626">'+fmtChun(odBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(odCnt)+' / 연체율 <strong style="color:#dc2626">'+odRate+'%</strong></div></div>'
     + '<div class="bg-white rounded-xl border border-emerald-200 p-4"><div class="text-xs text-emerald-600 mb-1 font-medium"><i class="fas fa-check-circle mr-1"></i>미연체 잔고</div><div style="font-size:22px;font-weight:800;color:#059669">'+fmtChun(nonOdBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(nonOdCnt)+' / '+fmtRePct(nonOdBal,totalBal)+'</div></div>'
-    + '<div class="bg-white rounded-xl border border-purple-200 p-4"><div class="text-xs text-purple-600 mb-1 font-medium"><i class="fas fa-chart-pie mr-1"></i>LTV 85%↑</div><div style="font-size:22px;font-weight:800;color:#7c3aed">'+fmtRePct(ltv85pBal,totalBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtChun(ltv85pBal)+' / '+fmtReCnt(S.all.ltv85p.cnt)+'</div></div>'
+    + '<div class="bg-white rounded-xl border border-purple-200 p-4"><div class="text-xs text-purple-600 mb-1 font-medium"><i class="fas fa-chart-pie mr-1"></i>평균 LTV</div><div style="font-size:22px;font-weight:800;color:#7c3aed">'+(avgLtv!==null?avgLtv+'%':'-')+'</div><div class="text-xs text-gray-400 mt-1">잔고가중 평균 &nbsp;&nbsp;레인지: '+fmtRePct(ltv85pBal,totalBal)+'@85%↑</div></div>'
+    + '<div class="bg-white rounded-xl border border-orange-200 p-4"><div class="text-xs text-orange-600 mb-1 font-medium"><i class="fas fa-percent mr-1"></i>평균 금리</div><div style="font-size:22px;font-weight:800;color:#ea580c">'+(avgRate!==null?avgRate+'%':'-')+'</div><div class="text-xs text-gray-400 mt-1">잔고가중 평균</div></div>'
     + '</div>'
     + ltvBarHtml
     + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-exchange-alt mr-1.5 text-red-400"></i>연체·미연체 × LTV 구간</p>' + mkOdLtvCross() + '</div>'
