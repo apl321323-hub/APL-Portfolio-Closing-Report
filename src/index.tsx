@@ -4051,8 +4051,12 @@ function calcRealestateStats(records, loanTypeName) {
     const ltv = calcLtv(r);
     RE_LTV_BANDS.forEach(b => { if(b.test(ltv)) addTo(bands[b.key], r); });
   };
-  // 잔고가중 평균 LTV (실질) / 평균 금리 집계
-  let ltvWSum = 0, ltvBalSum = 0, rWSum = 0, rBSum = 0;
+  // 평균 LTV: loanAmt/appraised 있으면 catMap과 동일한 ΣloanAmt/Σappraised 방식
+  //           없으면 건별 r.ltv 잔고가중평균 방식 (fallback)
+  //   → 두 방식 중 어느 것을 쓸지는 데이터가 결정 (필드 존재 여부)
+  let ltvLoanSum = 0, ltvAppSum = 0;   // catMap 방식 (ΣloanAmt/Σappraised)
+  let ltvWSum = 0, ltvBalSum = 0;      // fallback: 잔고가중평균 r.ltv
+  let rWSum = 0, rBSum = 0;
   const summary = { all: zeroBands(), od: zeroBands(), nonOd: zeroBands() };
   const byRegion = {}, byColtype = {}, byRC = {};
   filtered.forEach(r => {
@@ -4071,14 +4075,23 @@ function calcRealestateStats(records, loanTypeName) {
     if (!byRC[key]) byRC[key] = {grp,ct,all:zeroBands(),od:zeroBands(),nonOd:zeroBands()};
     addBand(byRC[key].all, r);
     if (od) addBand(byRC[key].od, r); else addBand(byRC[key].nonOd, r);
-    // 평균 LTV: 실질 LTV(loanAmt/appraised) 기준, 잔고 > 0
-    const realLtv = calcLtv(r);
-    if (realLtv > 0 && (r.b||0) > 0) { ltvWSum += r.b * realLtv; ltvBalSum += r.b; }
+    // 평균 LTV: catMap 방식 우선 (ΣloanAmt/Σappraised)
+    if ((r.appraised||0) > 0 && (r.loanAmt||0) > 0) {
+      ltvLoanSum += (r.loanAmt||0);
+      ltvAppSum  += (r.appraised||0);
+    } else if ((r.ltv||0) > 0 && (r.b||0) > 0) {
+      // fallback: r.ltv 잔고가중 누적 (loanAmt/appraised 없는 레코드만)
+      ltvWSum  += r.b * r.ltv;
+      ltvBalSum += r.b;
+    }
     // 평균 금리: r 필드가 있고 잔고 > 0
     if ((r.r||0) > 0 && (r.b||0) > 0) { rWSum += r.b * r.r; rBSum += r.b; }
   });
-  const avgLtv  = ltvBalSum > 0 ? (ltvWSum  / ltvBalSum).toFixed(1) : null;
-  const avgRate = rBSum     > 0 ? (rWSum    / rBSum    ).toFixed(2) : null;
+  // catMap 방식 LTV가 하나라도 있으면 그걸 우선 사용 (잔고 구성비 분석과 동일)
+  const avgLtv = ltvAppSum > 0
+    ? (ltvLoanSum / ltvAppSum * 100).toFixed(1)
+    : (ltvBalSum  > 0 ? (ltvWSum / ltvBalSum).toFixed(1) : null);
+  const avgRate = rBSum > 0 ? (rWSum / rBSum).toFixed(2) : null;
   return { summary, byRegion, byColtype, byRC, avgLtv, avgRate };
 }
 
