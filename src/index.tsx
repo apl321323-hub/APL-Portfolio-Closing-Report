@@ -1155,7 +1155,6 @@ async function renderUploadPage(el) {
   const usedBytes = Object.values(db).reduce((s,v) => s + JSON.stringify(v).length, 0);
   const usedKB  = (usedBytes / 1024).toFixed(0);
   const usedMB  = (usedBytes / 1024 / 1024).toFixed(1);
-  const gaugeColor = '#2563eb'; // IndexedDB는 용량 제한 없음
 
   el.innerHTML = \`
 <div class="space-y-5">
@@ -1173,7 +1172,7 @@ async function renderUploadPage(el) {
   <div class="card p-4 bg-green-50 border-green-100">
     <div class="flex items-center justify-between mb-2">
       <span class="text-xs font-bold text-gray-600"><i class="fas fa-database mr-1.5"></i>브라우저 저장 공간 (IndexedDB)</span>
-      <span class="text-xs font-bold text-green-600">현재 사용: \${usedKB}KB (\${usedMB}MB)</span>
+      <span class="text-xs font-bold text-green-600" id="idb-usage-label">현재 사용: 계산 중...</span>
     </div>
     <p class="text-xs text-green-700 mt-1"><i class="fas fa-check-circle mr-1"></i>IndexedDB 사용 중 — 용량 제한 없음 (수십 개월치 저장 가능)</p>
   </div>
@@ -1228,6 +1227,9 @@ async function renderUploadPage(el) {
     }
   </div>
 </div>\`;
+  // IndexedDB 사용량 표시 (innerHTML 할당 후 DOM 직접 업데이트)
+  const usageLabel = document.getElementById('idb-usage-label');
+  if (usageLabel) usageLabel.textContent = '현재 사용: ' + usedKB + 'KB (' + usedMB + 'MB)';
 }
 // ==================== 계약리스트 스토리지 ====================
 function getContractDB() {
