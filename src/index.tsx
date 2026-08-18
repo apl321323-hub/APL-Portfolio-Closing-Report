@@ -3260,6 +3260,11 @@ function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMa
 }
 
 function renderOverdue(el) {
+  if (!LOAN || !LOAN.records) {
+    el.innerHTML = '<div class="flex items-center justify-center h-64 text-gray-400 text-sm">결산자료(loan_data)가 없습니다. 먼저 데이터를 업로드하세요.</div>';
+    return;
+  }
+  try {
   const all = LOAN.records;
   const totalBal = all.reduce((s,r)=>s+r.b, 0);
 
@@ -3498,7 +3503,7 @@ function renderOverdue(el) {
       </h3>
       <div class="flex gap-1.5 flex-wrap">
         \${filterTabs.map(t => \`
-          <button onclick="setOverdueFilter('\${t.key}')"
+          <button data-of="\${t.key}"
             class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition"
             style="\${overdueFilterKey===t.key
               ? 'background:'+t.color+';color:#fff;border-color:'+t.color
@@ -3549,7 +3554,7 @@ function renderOverdue(el) {
       <div class="flex gap-1.5">
         \${[{k:'all',l:'전체'},{k:'collateral',l:'담보'},{k:'credit',l:'신용'}].map(t=>{
           const act=overdueChartGroup===t.k;
-          return '<button onclick="setOverdueChartGroup('+JSON.stringify(t.k)+')" class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition" style="'+(act?'background:#374151;color:#fff;border-color:#374151':'background:#fff;color:#374151;border-color:#e5e7eb')+'">'+t.l+'</button>';
+          return '<button data-ocg="'+t.k+'" class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition" style="'+(act?'background:#374151;color:#fff;border-color:#374151':'background:#fff;color:#374151;border-color:#e5e7eb')+'">'+t.l+'</button>';
         }).join('')}
       </div>
     </div>
@@ -3603,6 +3608,14 @@ function renderOverdue(el) {
     </div>
   </div>
 </div>\`;
+
+  // ── 탭 버튼 이벤트 위임 (data-ocg / data-of 속성으로 클릭 감지)
+  el.addEventListener('click', function _odHandler(e) {
+    const ocg = e.target.closest('[data-ocg]');
+    if (ocg) { el.removeEventListener('click', _odHandler); setOverdueChartGroup(ocg.dataset.ocg); return; }
+    const of_ = e.target.closest('[data-of]');
+    if (of_) { el.removeEventListener('click', _odHandler); setOverdueFilter(of_.dataset.of); return; }
+  });
 
   // ── 차트 렌더링: 그룹 필터별 레코드 재집계
   const _isCollGroup = r => { const cat=getCategoryOfProduct(r.p||''); return getGroupOfCategory(cat.id).id==='g1'; };
@@ -3678,6 +3691,10 @@ function renderOverdue(el) {
       }
     }
   },50);
+  } catch(err) {
+    console.error('[renderOverdue] 에러:', err);
+    el.innerHTML = '<div class="p-4 text-red-500 text-sm font-mono">렌더링 오류: ' + err.message + '</div>';
+  }
 }
 
 // 필터 선택 → 연체 페이지 재렌더
