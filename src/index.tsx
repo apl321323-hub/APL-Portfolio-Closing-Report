@@ -4246,28 +4246,39 @@ function renderRealestate(el) {
     }).join('');
     const tot = ub.map(b=>'<td><b>'+fmtChun(S.all[b.key].bal)+'</b></td>').join('');
 
-    // 도넛 차트: 지역별 잔고 비중 + 각 지역 내 담보종류 구성
-    const donutData = JSON.stringify({
-      regions: regions,
-      regColors: regions.map(g=>RE_REGION_COLORS[g]||'#6b7280'),
-      regBals: regions.map(g=>Math.round(detailRows.filter(r=>r.grp===g).reduce((s,r)=>s+r.all.total.bal,0)/10000000)),
-      regOdRates: regions.map(g=>{
-        const rr=detailRows.filter(r=>r.grp===g);
-        const rb=rr.reduce((s,r)=>s+r.all.total.bal,0);
-        const ro=rr.reduce((s,r)=>s+r.od.total.bal,0);
-        return rb>0?parseFloat((ro/rb*100).toFixed(2)):0;
-      })
-    }).replace(/"/g,'&quot;');
+    // 지역별 차트 데이터: 담보종류 × LTV 누적 바 + 연체율 꺾은선
+    const regionChartDataArr = regions.map(function(grp) {
+      const rows = detailRows.filter(r=>r.grp===grp);
+      const ubR = RE_LTV_BANDS.filter(b=>rows.some(r=>r.all[b.key].bal>0));
+      return JSON.stringify({
+        grp:       grp,
+        color:     RE_REGION_COLORS[grp]||'#6b7280',
+        labels:    rows.map(r=>r.ct),
+        ctColors:  rows.map(r=>RE_COLTYPE_COLORS[r.ct]||'#94a3b8'),
+        bands:     ubR.map(b=>b.label),
+        bandClrs:  ubR.map(b=>b.color),
+        balByBand: ubR.map(b=>rows.map(r=>Math.round(r.all[b.key].bal/10000000))),
+        odRates:   rows.map(r=>r.all.total.bal>0?parseFloat((r.od.total.bal/r.all.total.bal*100).toFixed(2)):0)
+      }).replace(/"/g,'&quot;');
+    });
 
-    return '<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start">'
+    // 지역별 차트 캔버스 + 테이블 세로 구성
+    const chartsHtml = regions.map(function(grp, i) {
+      const color = RE_REGION_COLORS[grp]||'#6b7280';
+      const dot = '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+color+';margin-right:5px;vertical-align:middle"></span>';
+      return '<div style="background:#f8fafc;border-radius:10px;padding:12px 14px;border:1px solid #e5e7eb">'
+        + '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">'+dot+grp+'</div>'
+        + '<canvas id="re-chart-detail-'+i+'" height="160" data-chart="'+regionChartDataArr[i]+'"></canvas>'
+        + '</div>';
+    }).join('');
+
+    return '<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start">'
       + '<div><div class="overflow-auto"><table class="data-table">'
       + '<thead><tr><th class="text-left">지역</th><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + bodyHtml
       + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #374151"><td colspan="2">전체 합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+tot+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
       + '</tbody></table></div></div>'
-      + '<div style="display:flex;flex-direction:column;gap:12px">'
-      + '<canvas id="re-chart-detail-donut" height="200" data-chart="'+donutData+'"></canvas>'
-      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:10px">' + chartsHtml + '</div>'
       + '</div>';
   }
 
@@ -4443,37 +4454,54 @@ function renderRealestate(el) {
       });
     })();
 
-    // ④ 지역별 잔고 도넛 차트
+    // ④ 지역별 담보종류 × LTV 누적 바 + 연체율 꺾은선 (re-chart-detail-0, -1, -2 ...)
     (function() {
-      const canvas = document.getElementById('re-chart-detail-donut');
-      if (!canvas) return;
-      const d = JSON.parse(canvas.getAttribute('data-chart').replace(/&quot;/g,'"'));
-      new Chart(canvas, {
-        type: 'doughnut',
-        data: {
-          labels: d.regions,
-          datasets: [{
-            data: d.regBals,
-            backgroundColor: d.regColors.map(function(c){ return c+'cc'; }),
-            borderColor: d.regColors,
-            borderWidth: 2, hoverOffset: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          cutout: '60%',
-          plugins: {
-            legend: { position:'bottom', labels:{ boxWidth:10, font:{size:10} } },
-            tooltip: { callbacks: {
-              label: function(ctx) {
-                const odRate = d.regOdRates[ctx.dataIndex];
-                return [' 잔고: '+ctx.parsed.toLocaleString()+'천만', ' 연체율: '+odRate+'%'];
+      var idx = 0;
+      while (true) {
+        var canvas = document.getElementById('re-chart-detail-'+idx);
+        if (!canvas) break;
+        (function(cvs) {
+          var d = JSON.parse(cvs.getAttribute('data-chart').replace(/&quot;/g,'"'));
+          var stackDs = d.bands.map(function(label, i) {
+            return {
+              type:'bar', label: label, data: d.balByBand[i],
+              backgroundColor: d.bandClrs[i]+'cc', borderColor: d.bandClrs[i],
+              borderWidth:1, stack:'bal', yAxisID:'y'
+            };
+          });
+          var lineDs = {
+            type:'line', label:'연체율(%)', data: d.odRates,
+            borderColor:'#dc2626', backgroundColor:'transparent',
+            pointBackgroundColor:'#dc2626', pointRadius:4, pointHoverRadius:6,
+            borderWidth:2, tension:0.3, yAxisID:'y2'
+          };
+          new Chart(cvs, {
+            type: 'bar',
+            data: { labels: d.labels, datasets: stackDs.concat([lineDs]) },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { position:'bottom', labels:{ boxWidth:9, font:{size:9}, padding:6 } },
+                tooltip: { callbacks: { label: function(ctx) {
+                  if (ctx.dataset.yAxisID==='y2') return ' 연체율: '+ctx.parsed.y+'%';
+                  return ' '+ctx.dataset.label+': '+ctx.parsed.y.toLocaleString()+'천만';
+                }}}
+              },
+              scales: {
+                x: { ticks:{ font:{size:9} } },
+                y:  { stacked:true, position:'left',
+                      ticks:{ font:{size:9}, callback:function(v){ return v.toLocaleString(); } },
+                      title:{display:true, text:'잔고(천만)', font:{size:9}} },
+                y2: { stacked:false, position:'right', grid:{drawOnChartArea:false},
+                      ticks:{ font:{size:9}, callback:function(v){ return v+'%'; } },
+                      title:{display:true, text:'연체율', font:{size:9}} }
               }
-            }}
-          }
-        },
-        plugins: [pluginNoDataLabel]
-      });
+            },
+            plugins: [pluginNoDataLabel]
+          });
+        })(canvas);
+        idx++;
+      }
     })();
   })();
 
