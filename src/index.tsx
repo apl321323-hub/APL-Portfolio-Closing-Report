@@ -200,7 +200,6 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       <div class="sb-item" data-page="realestate" onclick="goPage('realestate')">
         <i class="sb-icon fas fa-building"></i>
         <span class="sb-label">부동산 현황</span>
-        <span class="sb-updating">업데이트 중</span>
       </div>
       <div class="sb-item" data-page="trend" onclick="goPage('trend')">
         <i class="sb-icon fas fa-chart-line"></i>
