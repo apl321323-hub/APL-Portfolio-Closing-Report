@@ -428,13 +428,116 @@ let editAgentGroups = [];
 let settingsAgentTab = 'categories';
 
 // ==================== IndexedDB 헬퍼 ====================
-function getMonthsDB() {
-  try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch(e){ return {}; }
+const IDB_NAME    = 'apl-db';
+const IDB_STORE   = 'months';
+const IDB_VERSION = 1;
+let _idbPromise = null;
+
+/** IndexedDB 연결 (앱 전체에서 1회만 open) */
+function openIDB() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE); // keyPath 없이 key 직접 지정
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+  return _idbPromise;
 }
-// localStorage에 잘못 저장된 base_date (말일 아닌 날짜) 자동 보정
-function migrateBaseDates() {
+
+/**
+ * IndexedDB에서 전체 months 딕셔너리 반환
+ * 반환값: { '202604': {...}, '202605': {...}, ... }
+ */
+async function getMonthsDB() {
   try {
-    const db = getMonthsDB();
+    const idb = await openIDB();
+    return await new Promise((resolve, reject) => {
+      const tx    = idb.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const result = {};
+      const req = store.openCursor();
+      req.onsuccess = e => {
+        const cursor = e.target.result;
+        if (cursor) { result[cursor.key] = cursor.value; cursor.continue(); }
+        else resolve(result);
+      };
+      req.onerror = e => reject(e.target.error);
+    });
+  } catch(e) {
+    console.warn('[getMonthsDB] IDB 실패, localStorage 폴백:', e);
+    try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch(_){ return {}; }
+  }
+}
+
+/**
+ * IndexedDB에 전체 months 딕셔너리 저장
+ * slim화(빈 문자열·null 제거) 포함
+ */
+async function saveMonthsDB(db) {
+  try {
+    const idb = await openIDB();
+    await new Promise((resolve, reject) => {
+      const tx    = idb.transaction(IDB_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_STORE);
+      // 기존 레코드 전체 교체: 삭제 후 재삽입
+      store.clear();
+      for (const [k, v] of Object.entries(db)) {
+        // slim화: 빈 문자열·null 필드 제거
+        const slim = {
+          ...v,
+          records: (v.records || []).map(r => {
+            const o = {};
+            for (const [fk, fv] of Object.entries(r)) {
+              if (fv !== '' && fv !== null) o[fk] = fv;
+            }
+            return o;
+          })
+        };
+        store.put(slim, k);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror    = e => reject(e.target.error);
+    });
+  } catch(e) {
+    console.error('[saveMonthsDB] IDB 저장 실패:', e);
+    throw e;
+  }
+}
+
+/**
+ * localStorage(구버전) → IndexedDB 1회 마이그레이션
+ * 기존 데이터가 있으면 IDB로 옮기고 localStorage 항목 삭제
+ */
+async function migrateLocalStorageToIDB() {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    if (!raw) return;
+    const old = JSON.parse(raw);
+    if (!old || Object.keys(old).length === 0) return;
+    // IDB가 이미 데이터를 가지고 있으면 스킵
+    const existing = await getMonthsDB();
+    if (Object.keys(existing).length > 0) {
+      localStorage.removeItem(DB_KEY); // 중복 제거만
+      return;
+    }
+    await saveMonthsDB(old);
+    localStorage.removeItem(DB_KEY);
+    console.log('[마이그레이션] localStorage → IndexedDB 완료 (' + Object.keys(old).length + '개월)');
+  } catch(e) {
+    console.warn('[마이그레이션] 실패 (무시):', e);
+  }
+}
+
+// base_date 말일 자동 보정
+async function migrateBaseDates() {
+  try {
+    const db = await getMonthsDB();
     let changed = false;
     for (const [yyyymm, v] of Object.entries(db)) {
       if (!v.base_date) continue;
@@ -442,56 +545,13 @@ function migrateBaseDates() {
       const mo = parseInt(yyyymm.slice(4));
       const correctLastDay = new Date(yr, mo, 0).getDate();
       const correctDate = yr + '-' + String(mo).padStart(2,'0') + '-' + String(correctLastDay).padStart(2,'0');
-      if (v.base_date !== correctDate) {
-        v.base_date = correctDate;
-        changed = true;
-      }
+      if (v.base_date !== correctDate) { v.base_date = correctDate; changed = true; }
     }
-    if (changed) localStorage.setItem(DB_KEY, JSON.stringify(db));
+    if (changed) await saveMonthsDB(db);
   } catch(e) {}
 }
-function saveMonthsDB(db) {
-  // 레코드 슬림화: 빈 문자열 필드 제거해서 크기 절약
-  const slim = {};
-  for (const [k, v] of Object.entries(db)) {
-    slim[k] = {
-      ...v,
-      records: (v.records || []).map(r => {
-        const o = {};
-        for (const [fk, fv] of Object.entries(r)) {
-          if (fv !== '' && fv !== null) o[fk] = fv;
-        }
-        return o;
-      })
-    };
-  }
-  const json = JSON.stringify(slim);
-  // 저장 크기 안내 (디버그용)
-  const kb = (json.length / 1024).toFixed(0);
-
-  try {
-    localStorage.setItem(DB_KEY, json);
-  } catch(e) {
-    // QuotaExceededError: 가장 오래된 월 1개 삭제 후 재시도
-    if (e.name === 'QuotaExceededError' || e.code === 22) {
-      const keys = Object.keys(slim).sort(); // 오름차순 = 오래된 순
-      if (keys.length > 1) {
-        const oldest = keys[0];
-        delete slim[oldest];
-        try {
-          localStorage.setItem(DB_KEY, JSON.stringify(slim));
-          alert('저장 공간이 부족하여 가장 오래된 월 데이터(' + oldest.slice(0,4) + '년 ' + parseInt(oldest.slice(4)) + '월)를 자동 삭제하고 저장했습니다. 현재 저장 크기: ' + kb + 'KB / 5120KB');
-          return;
-        } catch(e2) { /* 그래도 실패하면 아래 alert */ }
-      }
-      alert('저장 공간이 부족합니다 (' + kb + 'KB / 5120KB). 결산자료 업로드 페이지에서 불필요한 이전 월 데이터를 삭제해주세요.');
-    } else {
-      throw e;
-    }
-  }
-}
-function getMonthKeys() {
-  return Object.keys(getMonthsDB()).sort().reverse(); // 최신순
+async function getMonthKeys() {
+  return Object.keys(await getMonthsDB()).sort().reverse(); // 최신순
 }
 
 // ==================== 초기화 ====================
@@ -521,29 +581,31 @@ async function preloadContractFiles() {
 
 async function init() {
   try {
+    // 0. localStorage → IndexedDB 1회 마이그레이션
+    await migrateLocalStorageToIDB();
+
     // 1. 월별 추이(마감자료) 로드
     const trendRes = await fetch('/data.json');
     TREND = await trendRes.json();
 
     loadCategoriesFromStorage();
-    migrateBaseDates(); // localStorage base_date 말일 자동 보정
+    await migrateBaseDates(); // base_date 말일 자동 보정
 
-    // 2. localStorage에 저장된 가장 최신 월 로드
-    const months = getMonthKeys();
+    // 2. IndexedDB에 저장된 가장 최신 월 로드
+    const months = await getMonthKeys();
     if (months.length > 0) {
       await loadMonthData(months[0]);
     } else {
-      // localStorage 비어있으면 /loan_data.json 자동 로드 (fallback)
+      // IDB 비어있으면 /loan_data.json 자동 로드 (fallback)
       try {
         const loanRes = await fetch('/loan_data.json');
         if (loanRes.ok) {
           const loanData = await loanRes.json();
           if (loanData && loanData.base_date) {
-            // yyyymm 키 추출 (base_date: "2026-06-30" → "202606")
             const key = loanData.base_date.replace(/-/g,'').slice(0,6);
-            const db = getMonthsDB();
+            const db = await getMonthsDB();
             db[key] = loanData;
-            saveMonthsDB(db);
+            await saveMonthsDB(db);
             await loadMonthData(key);
             console.log('[결산자료] loan_data.json 자동 로드 완료 (' + key + ', ' + (loanData.records?.length||0) + '건)');
           }
@@ -559,10 +621,10 @@ async function init() {
     }
 
     refreshSidebarMonths();
-    augmentTrendFromStorage(); // localStorage 결산자료로 TREND 누락 월 보완 (렌더 직전)
-    renderPage();
+    await augmentTrendFromStorage(); // IDB 결산자료로 TREND 누락 월 보완
+    await renderPage();
 
-    // 3. 계약리스트 사전 로드 (백그라운드 - 렌더링 차단 안 함)
+    // 3. 계약리스트 사전 로드 (백그라운드)
     preloadContractFiles().then(() => {
       const badge = document.getElementById('sb-contract-count');
       if (badge) badge.textContent = Object.keys(getContractDB()).length;
@@ -574,10 +636,10 @@ async function init() {
 }
 
 // ==================== TREND 동적 보완 ====================
-// localStorage 결산자료에서 TREND에 없는 월을 계산해서 추가
-function augmentTrendFromStorage() {
+// IDB 결산자료에서 TREND에 없는 월을 계산해서 추가
+async function augmentTrendFromStorage() {
   if (!TREND) return;
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   const keys = Object.keys(db).sort(); // 오름차순
   if (keys.length === 0) return;
 
@@ -748,19 +810,19 @@ function augmentTrendFromStorage() {
 }
 
 async function loadMonthData(yyyymm) {
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   if (!db[yyyymm]) return false;
   LOAN = db[yyyymm];
   document.getElementById('hdr-basedate').textContent = LOAN.base_date;
   document.getElementById('hdr-date').textContent = '마감: ' + LOAN.base_date + ' | 추이: ' + (TREND?.generated_at || '-');
   // 사이드바 활성 월 표시
   document.getElementById('sb-active-month').textContent = yyyymm.slice(0,4)+'년 '+parseInt(yyyymm.slice(4))+'월';
-  refreshSidebarMonths(yyyymm);
+  await refreshSidebarMonths(yyyymm);
   return true;
 }
 
-function refreshSidebarMonths(activeKey) {
-  const months = getMonthKeys();
+async function refreshSidebarMonths(activeKey) {
+  const months = await getMonthKeys();
   const badge = document.getElementById('sb-month-count');
   if (badge) badge.textContent = months.length;
 
@@ -812,20 +874,20 @@ function closeMonthDropdown() {
 
 async function selectMonth(yyyymm) {
   await loadMonthData(yyyymm);
-  if (currentPage !== 'upload') renderPage();
-  else goPage('overview');
+  if (currentPage !== 'upload') await renderPage();
+  else await goPage('overview');
 }
 
 // ==================== 라우팅 ====================
-function goPage(page) {
+async function goPage(page) {
   currentPage = page;
   document.querySelectorAll('.sb-item').forEach(el => el.classList.remove('active'));
-  const target = document.querySelector(\`[data-page="\${page}"]\`);
+  const target = document.querySelector('[data-page="' + page + '"]');
   if (target) target.classList.add('active');
-  renderPage();
+  await renderPage();
 }
 
-function renderPage() {
+async function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
   if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate') {
@@ -844,11 +906,11 @@ function renderPage() {
     case 'balance':  renderBalance(el);  break;
     case 'product':  renderProduct(el);  break;
     case 'agent':    renderAgent(el);    break;
-    case 'overdue':        renderOverdue(el);        break;
-    case 'overdue-change': renderOverdueChange(el);  break;
-    case 'realestate': renderRealestate(el); break;
+    case 'overdue':        await renderOverdue(el);        break;
+    case 'overdue-change': await renderOverdueChange(el);  break;
+    case 'realestate': await renderRealestate(el); break;
     case 'trend':    renderTrend(el);    break;
-    case 'upload':    renderUploadPage(el);    break;
+    case 'upload':    await renderUploadPage(el);    break;
     case 'contract':  renderContractPage(el);  break;
     case 'newloan':   renderNewLoan(el);        break;
     case 'settings':  renderSettingsPage(el);  break;
@@ -1085,16 +1147,15 @@ function mkBar(id,labels,datasets,opts={}){const ctx=document.getElementById(id)
 function mkLine(id,labels,datasets,opts={}){const ctx=document.getElementById(id);if(!ctx)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(ctx,{type:'line',data:{labels,datasets:datasets.map(d=>({...d,tension:.35,pointRadius:3,pointHoverRadius:5,borderWidth:2.5}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{font:{size:11},boxWidth:12}}},scales:{y:{ticks:{callback:v=>opts.pct?v.toFixed(1)+'%':fmtAmt(v),font:{size:10}}},...(opts.y1?{y1:{type:'linear',position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>v.toFixed(1)+'%',font:{size:10}}}}:{})}}});}
 
 // ==================== 페이지: 월별 데이터 관리 ====================
-function renderUploadPage(el) {
-  const db = getMonthsDB();
-  const months = getMonthKeys();
+async function renderUploadPage(el) {
+  const db     = await getMonthsDB();
+  const months = await getMonthKeys();
 
-  // localStorage 사용량 계산
-  const usedBytes = (localStorage.getItem(DB_KEY) || '').length;
-  const usedKB = (usedBytes / 1024).toFixed(0);
-  const maxKB = 5120;
-  const usedPct = Math.min(100, Math.round(usedBytes / 1024 / maxKB * 100));
-  const gaugeColor = usedPct >= 80 ? '#ef4444' : usedPct >= 60 ? '#f97316' : '#2563eb';
+  // IndexedDB 사용량 계산 (레코드 JSON 크기 합산으로 추정)
+  const usedBytes = Object.values(db).reduce((s,v) => s + JSON.stringify(v).length, 0);
+  const usedKB  = (usedBytes / 1024).toFixed(0);
+  const usedMB  = (usedBytes / 1024 / 1024).toFixed(1);
+  const gaugeColor = '#2563eb'; // IndexedDB는 용량 제한 없음
 
   el.innerHTML = \`
 <div class="space-y-5">
@@ -1109,16 +1170,12 @@ function renderUploadPage(el) {
   </div>
 
   <!-- 저장 공간 게이지 -->
-  <div class="card p-4 \${usedPct >= 80 ? 'bg-red-50 border-red-100' : 'bg-gray-50'}">
+  <div class="card p-4 bg-green-50 border-green-100">
     <div class="flex items-center justify-between mb-2">
-      <span class="text-xs font-bold text-gray-600"><i class="fas fa-hdd mr-1.5"></i>브라우저 저장 공간 (localStorage)</span>
-      <span class="text-xs font-bold" style="color:\${gaugeColor}">\${usedKB}KB / \${maxKB}KB (\${usedPct}%)</span>
+      <span class="text-xs font-bold text-gray-600"><i class="fas fa-database mr-1.5"></i>브라우저 저장 공간 (IndexedDB)</span>
+      <span class="text-xs font-bold text-green-600">현재 사용: \${usedKB}KB (\${usedMB}MB)</span>
     </div>
-    <div class="w-full bg-gray-200 rounded-full h-2">
-      <div class="h-2 rounded-full transition-all" style="width:\${usedPct}%;background:\${gaugeColor}"></div>
-    </div>
-    \${usedPct >= 80 ? '<p class="text-xs text-red-600 mt-1.5"><i class="fas fa-exclamation-triangle mr-1"></i>저장 공간이 부족합니다. 오래된 월 데이터를 삭제해주세요.</p>' : ''}
-    <p class="text-xs text-gray-400 mt-1.5">결산자료 1개월 ≈ 1,200~2,000KB · 최대 2~3개월 저장 가능</p>
+    <p class="text-xs text-green-700 mt-1"><i class="fas fa-check-circle mr-1"></i>IndexedDB 사용 중 — 용량 제한 없음 (수십 개월치 저장 가능)</p>
   </div>
 
   <!-- 안내 카드 -->
@@ -1500,13 +1557,13 @@ function saveContractData() {
   renderContractPage(document.getElementById('main-content'));
 }
 
-function deleteMonth(yyyymm) {
+async function deleteMonth(yyyymm) {
   if (!confirm(\`\${yyyymm.slice(0,4)}년 \${parseInt(yyyymm.slice(4))}월 데이터를 삭제하시겠습니까?\`)) return;
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   delete db[yyyymm];
-  saveMonthsDB(db);
-  refreshSidebarMonths();
-  renderUploadPage(document.getElementById('main-content'));
+  await saveMonthsDB(db);
+  await refreshSidebarMonths();
+  await renderUploadPage(document.getElementById('main-content'));
 }
 
 // ==================== 업로드 모달 ====================
@@ -1680,25 +1737,25 @@ function processFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
-function saveUploadedData() {
+async function saveUploadedData() {
   if (!pendingParsed) return;
   const y = document.getElementById('upload-year').value;
   const mo = document.getElementById('upload-month').value;
-  const key = y + mo; // e.g. '202606'
+  const key = y + mo;
 
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   db[key] = pendingParsed;
-  saveMonthsDB(db);
+  await saveMonthsDB(db);
 
   LOAN = pendingParsed;
   document.getElementById('hdr-basedate').textContent = LOAN.base_date;
   document.getElementById('hdr-date').textContent = '마감: ' + LOAN.base_date + ' | 추이: ' + (TREND?.generated_at||'-');
   document.getElementById('sb-active-month').textContent = y+'년 '+parseInt(mo)+'월';
 
-  refreshSidebarMonths(key);
-  augmentTrendFromStorage(); // 새 결산자료 업로드 시 TREND 누락 월 즉시 보완
+  await refreshSidebarMonths(key);
+  await augmentTrendFromStorage();
   closeUploadModal();
-  goPage('overview');
+  await goPage('overview');
 }
 
 // ==================== 페이지: 종합 개요 ====================
@@ -3259,7 +3316,7 @@ function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMa
   return html;
 }
 
-function renderOverdue(el) {
+async function renderOverdue(el) {
   if (!LOAN || !LOAN.records) {
     el.innerHTML = '<div class="flex items-center justify-center h-64 text-gray-400 text-sm">결산자료(loan_data)가 없습니다. 먼저 데이터를 업로드하세요.</div>';
     return;
@@ -3269,7 +3326,7 @@ function renderOverdue(el) {
   const totalBal = all.reduce((s,r)=>s+r.b, 0);
 
   // ── 전월 데이터 로드 (증감 계산용)
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   const currYm = LOAN.base_date ? LOAN.base_date.slice(0,7) : null;
   let prevAll = null;
   if (currYm) {
@@ -3661,7 +3718,7 @@ function renderOverdue(el) {
     }}});
     // 월별 연체율 추이: 결산자료(loan_data) 다월 레코드 직접 계산
     {
-      const mdb = getMonthsDB();
+      const mdb = await getMonthsDB();
       // 날짜순 정렬된 월 목록 추출
       const mEntries = Object.entries(mdb)
         .filter(([,v])=>v&&v.records&&v.base_date)
@@ -3698,25 +3755,25 @@ function renderOverdue(el) {
 }
 
 // 필터 선택 → 연체 페이지 재렌더
-function setOverdueFilter(key) {
+async function setOverdueFilter(key) {
   overdueFilterKey = key;
   const el = document.getElementById('main-content');
-  renderOverdue(el);
+  await renderOverdue(el);
 }
 // 차트 그룹 필터 (전체/담보/신용)
-function setOverdueChartGroup(grp) {
+async function setOverdueChartGroup(grp) {
   overdueChartGroup = grp;
   const el = document.getElementById('main-content');
-  renderOverdue(el);
+  await renderOverdue(el);
 }
 // inline onclick handler에서 접근할 수 있도록 window에 명시 등록
 window.setOverdueFilter     = setOverdueFilter;
 window.setOverdueChartGroup = setOverdueChartGroup;
 
 // ==================== 페이지: 연체 변동 분석 ====================
-function renderOverdueChange(el) {
+async function renderOverdueChange(el) {
   // ── getMonthsDB()로 올바르게 읽기 (apl_months_v1 키 사용)
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   const months = Object.entries(db)
     .filter(([,v]) => v && v.records && v.base_date)
     .map(([k, v]) => ({ key: k, base_date: v.base_date, records: v.records }))
@@ -3792,19 +3849,19 @@ function renderOverdueChange(el) {
     const currSel = document.getElementById('oc-curr-month');
     if (prevSel && prevYm) prevSel.value = prevYm;
     if (currSel && latestYm) currSel.value = latestYm;
-    renderOcResult();
+    await renderOcResult();
   }
 }
 
-function renderOcResult() {
+async function renderOcResult() {
   const prevYm = document.getElementById('oc-prev-month')?.value;
   const currYm = document.getElementById('oc-curr-month')?.value;
   const resEl  = document.getElementById('oc-result');
   if (!resEl || !prevYm || !currYm || prevYm === currYm) return;
 
-  // ── getMonthsDB()로 올바르게 읽기
+  // ── IDB에서 읽기
   let prevRecs = [], currRecs = [];
-  const db = getMonthsDB();
+  const db = await getMonthsDB();
   Object.values(db).forEach(v => {
     if (!v || !v.base_date || !v.records) return;
     const ym = v.base_date.slice(0,7);
@@ -4181,8 +4238,8 @@ function calcRealestateStats(records, loanTypeName) {
   return { summary, byRegion, byColtype, byRC, avgLtv, avgRate };
 }
 
-function renderRealestate(el) {
-  const db = getMonthsDB();
+async function renderRealestate(el) {
+  const db = await getMonthsDB();
   // entries: [{key:'202606', data:{base_date,records,...}}] 형태 — yyyymm 키 유지
   const entries = Object.entries(db)
     .filter(([k,v])=>v&&v.base_date&&v.records)
@@ -5316,7 +5373,7 @@ function saveCategories(){
   reindexCatOrders();
   CATEGORIES=JSON.parse(JSON.stringify(editCategories));
   GROUPS=JSON.parse(JSON.stringify(editGroups));
-  saveCatsToStorage();renderPage();
+  saveCatsToStorage(); renderPage();
 }
 function resetCategories(){if(!confirm('카테고리 및 그룹을 기본값으로 초기화하시겠습니까?'))return;editCategories=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));editGroups=JSON.parse(JSON.stringify(DEFAULT_GROUPS));refreshSettingsBody();}
 
