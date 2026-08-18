@@ -4138,11 +4138,11 @@ function renderRealestate(el) {
     }).replace(/"/g,'&quot;');
     return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
       + '<div class="overflow-auto"><table class="data-table">'
-      + '<thead><tr><th class="text-left">구분</th><th>건수</th>' + bandTh(ub) + '<th>합계</th><th>비율</th></tr></thead>'
+      + '<thead><tr><th class="text-left">구분</th><th class="text-right">건수</th>' + bandTh(ub) + '<th>합계</th><th>비율</th></tr></thead>'
       + '<tbody>'
-      + '<tr><td><span class="badge badge-green">미연체</span></td><td>'+fmtReCnt(nonOdCnt)+'</td>'+bandCells(ub,S.nonOd)+'<td class="font-semibold" style="color:#059669">'+fmtChun(nonOdBal)+'</td><td>'+fmtRePct(nonOdBal,totalBal)+'</td></tr>'
-      + '<tr><td><span class="badge badge-red">연체(d&gt;10)</span></td><td>'+fmtReCnt(odCnt)+'</td>'+bandCells(ub,S.od)+'<td class="font-semibold" style="color:#dc2626">'+fmtChun(odBal)+'</td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
-      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td>100%</td></tr>'
+      + '<tr><td><span class="badge badge-green">미연체</span></td><td class="text-right">'+fmtReCnt(nonOdCnt)+'</td>'+bandCells(ub,S.nonOd)+'<td class="font-semibold" style="color:#059669">'+fmtChun(nonOdBal)+'</td><td>'+fmtRePct(nonOdBal,totalBal)+'</td></tr>'
+      + '<tr><td><span class="badge badge-red">연체(d&gt;10)</span></td><td class="text-right">'+fmtReCnt(odCnt)+'</td>'+bandCells(ub,S.od)+'<td class="font-semibold" style="color:#dc2626">'+fmtChun(odBal)+'</td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td class="text-right">'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td>100%</td></tr>'
       + '</tbody></table></div>'
       + '<div><canvas id="re-chart-odltv" height="140" data-chart="'+chartData+'"></canvas></div>'
       + '</div>';
@@ -4178,7 +4178,7 @@ function renderRealestate(el) {
       const color = RE_REGION_COLORS[r.grp]||'#6b7280';
       return '<tr class="re-region-row" data-grp="'+r.grp+'" data-detail="'+detailJson+'" data-color="'+color+'" style="cursor:pointer">'
         + '<td>'+dot+r.grp+'</td>'
-        + '<td>'+fmtReCnt(r.all.total.cnt)+'</td>'
+        + '<td class="text-right">'+fmtReCnt(r.all.total.cnt)+'</td>'
         + bandCells(ub,r.all)
         + '<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td>'
         + '<td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td>'
@@ -4188,9 +4188,9 @@ function renderRealestate(el) {
 
     return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start" id="re-region-wrap">'
       + '<div><div class="overflow-auto"><table class="data-table">'
-      + '<thead><tr><th class="text-left">지역</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
+      + '<thead><tr><th class="text-left">지역</th><th class="text-right">건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + rows
-      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td class="text-right">'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
       + '</tbody></table></div></div>'
       + '<div><canvas id="re-chart-region" height="180" data-chart="'+chartData+'"></canvas></div>'
       // 툴팁 DOM (숨김 상태)
@@ -4212,14 +4212,14 @@ function renderRealestate(el) {
     }).replace(/"/g,'&quot;');
     const rows = coltypeRows.map(r=>{
       const dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(RE_COLTYPE_COLORS[r.ct]||'#6b7280')+';margin-right:6px"></span>';
-      return '<tr><td>'+dot+r.ct+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+bandCells(ub,r.all)
+      return '<tr><td>'+dot+r.ct+'</td><td class="text-right">'+fmtReCnt(r.all.total.cnt)+'</td>'+bandCells(ub,r.all)
         +'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
     }).join('');
     return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
       + '<div><div class="overflow-auto"><table class="data-table">'
-      + '<thead><tr><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
+      + '<thead><tr><th class="text-left">담보종류</th><th class="text-right">건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + rows
-      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td class="text-right">'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
       + '</tbody></table></div></div>'
       + '<div><canvas id="re-chart-coltype" height="200" data-chart="'+chartData+'"></canvas></div>'
       + '</div>';
@@ -4238,10 +4238,10 @@ function renderRealestate(el) {
         const cells = bandCells(ub,r.all);
         const rc = i===0 ? '<td rowspan="'+rows.length+'" style="font-weight:700;color:'+(RE_REGION_COLORS[grp]||'#374151')+';border-right:1px solid #e5e7eb;background:#f8fafd;vertical-align:top;padding-top:10px">'+grp+'</td>' : '';
         const dot = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+(RE_COLTYPE_COLORS[r.ct]||'#6b7280')+';margin-right:5px"></span>';
-        return '<tr'+(i===rows.length-1?' style="border-bottom:2px solid #d1d5db"':'')+'>'+rc+'<td>'+dot+r.ct+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+cells+'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
+        return '<tr'+(i===rows.length-1?' style="border-bottom:2px solid #d1d5db"':'')+'>'+rc+'<td>'+dot+r.ct+'</td><td class="text-right">'+fmtReCnt(r.all.total.cnt)+'</td>'+cells+'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
       }).join('');
       const sc = ub.map(b=>'<td>'+fmtChun(rows.reduce((s,r)=>s+r.all[b.key].bal,0))+'</td>').join('');
-      const sub = '<tr style="background:#eff6ff;font-weight:600;border-bottom:2px solid #bfdbfe"><td colspan="2" style="color:'+(RE_REGION_COLORS[grp]||'#374151')+'">'+grp+' 소계</td><td>'+fmtReCnt(regCnt)+'</td>'+sc+'<td>'+fmtChun(regBal)+'</td><td style="color:#dc2626">'+fmtChun(regOd)+'</td><td>'+fmtRePct(regOd,regBal)+'</td></tr>';
+      const sub = '<tr style="background:#eff6ff;font-weight:600;border-bottom:2px solid #bfdbfe"><td colspan="2" style="color:'+(RE_REGION_COLORS[grp]||'#374151')+'">'+grp+' 소계</td><td class="text-right">'+fmtReCnt(regCnt)+'</td>'+sc+'<td>'+fmtChun(regBal)+'</td><td style="color:#dc2626">'+fmtChun(regOd)+'</td><td>'+fmtRePct(regOd,regBal)+'</td></tr>';
       return rowsHtml + sub;
     }).join('');
     const tot = ub.map(b=>'<td><b>'+fmtChun(S.all[b.key].bal)+'</b></td>').join('');
@@ -4274,9 +4274,9 @@ function renderRealestate(el) {
 
     return '<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start">'
       + '<div><div class="overflow-auto"><table class="data-table">'
-      + '<thead><tr><th class="text-left">지역</th><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
+      + '<thead><tr><th class="text-left">지역</th><th class="text-left">담보종류</th><th class="text-right">건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + bodyHtml
-      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #374151"><td colspan="2">전체 합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+tot+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
+      + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #374151"><td colspan="2">전체 합계</td><td class="text-right">'+fmtReCnt(totalCnt)+'</td>'+tot+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
       + '</tbody></table></div></div>'
       + '<div style="display:flex;flex-direction:column;gap:10px">' + chartsHtml + '</div>'
       + '</div>';
