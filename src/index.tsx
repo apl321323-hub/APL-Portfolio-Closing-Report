@@ -3630,11 +3630,10 @@ function renderOverdue(el) {
     if (!tabEl) return;
     tabEl.innerHTML = [
       {k:'all',l:'전체'},{k:'collateral',l:'담보'},{k:'credit',l:'신용'}
-    ].map(t=>{
-      const active = overdueChartGroup===t.k;
-      return '<button onclick="setOverdueChartGroup(\''+t.k+'\')"\'
-        +' class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition"'
-        +' style="'+(active?'background:#374151;color:#fff;border-color:#374151':'background:#fff;color:#374151;border-color:#e5e7eb')+'">'+t.l+'</button>';
+    ].map(t => {
+      const active = overdueChartGroup === t.k;
+      const s = active ? 'background:#374151;color:#fff;border-color:#374151' : 'background:#fff;color:#374151;border-color:#e5e7eb';
+      return '<button onclick="setOverdueChartGroup(' + JSON.stringify(t.k) + ')" class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition" style="' + s + '">' + t.l + '</button>';
     }).join('');
   };
   setTimeout(()=>{
