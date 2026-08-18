@@ -4030,7 +4030,9 @@ function fmtRePct(v, t) { return t > 0 ? (v / t * 100).toFixed(1) + '%' : '-'; }
 
 // 집계 함수
 function calcRealestateStats(records, loanTypeName) {
-  const filtered = records.filter(r => r.p === loanTypeName && r.clt);
+  // loanTypeName === null → 담보론 + 담보론(지분대출) 합산
+  const RE_LOAN_NAMES = ['담보론', '담보론(지분대출)'];
+  const filtered = records.filter(r => r.clt && (loanTypeName === null ? RE_LOAN_NAMES.includes(r.p) : r.p === loanTypeName));
   const isOd = r => (r.d||0) > 10;
   const zero = () => ({cnt:0, bal:0});
   const zeroBands = () => {
@@ -4090,8 +4092,9 @@ function renderRealestate(el) {
   const dataset = db[selKey];
   if (!dataset) { el.innerHTML='<div class="text-gray-400 p-8">데이터 없음</div>'; return; }
   const reSelLoanType = window._reLoanType || 'loan';
-  const LT = { loan:'담보론', loanShare:'담보론(지분대출)' };
-  const loanTypeName = LT[reSelLoanType];
+  const LT = { all:'전체 합산', loan:'담보론', loanShare:'담보론(지분대출)' };
+  const loanTypeName = reSelLoanType === 'all' ? null : LT[reSelLoanType];
+  const loanTypeLabel = LT[reSelLoanType] || '전체 합산';
   const stats = calcRealestateStats(dataset.records, loanTypeName);
   const S = stats.summary;
   const totalBal = S.all.total.bal, totalCnt = S.all.total.cnt;
@@ -4287,7 +4290,7 @@ function renderRealestate(el) {
     '<div class="bg-white rounded-xl border border-gray-200 p-4">'
     + '<div class="flex items-center justify-between mb-3">'
     + '<span class="text-xs font-bold text-gray-600"><i class="fas fa-sliders-h mr-1.5 text-blue-400"></i>LTV 구간별 잔고 분포</span>'
-    + '<span class="text-xs text-gray-400">'+selDate+' 기준 · '+loanTypeName+'</span>'
+    + '<span class="text-xs text-gray-400">'+selDate+' 기준 · '+loanTypeLabel+'</span>'
     + '</div>'
     + '<div style="display:flex;height:20px;border-radius:10px;overflow:hidden;gap:1px;margin-bottom:10px">'
     + ltvUsed.map(b=>'<div style="flex:'+(S.all[b.key].bal/totalBal)+';background:'+b.color+';min-width:2px" title="'+b.label+': '+fmtChun(S.all[b.key].bal)+' ('+fmtRePct(S.all[b.key].bal,totalBal)+') '+S.all[b.key].cnt+'건"></div>').join('')
@@ -4297,9 +4300,17 @@ function renderRealestate(el) {
     + '</div></div>'
   ) : '';
 
-  // ── 대출유형 탭
+  // ── 대출유형 탭 (전체 합산 / 담보론 / 담보론(지분대출))
   const loanTabsHtml = '<div class="flex gap-2">'
-    + Object.entries(LT).map(([k,v])=>'<button data-lt="'+k+'" onclick="window._reLoanType=this.dataset.lt;renderPage()" class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all '+(k===reSelLoanType?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300')+'">'+ v+'</button>').join('')
+    + Object.entries(LT).map(([k,v]) => {
+        const isActive = k === reSelLoanType;
+        const isAll    = k === 'all';
+        const cls      = isAll
+          ? (isActive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400')
+          : (isActive ? 'bg-blue-600 text-white border-blue-600'  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300');
+        const icon     = isAll ? '<i class="fas fa-layer-group mr-1.5 text-xs"></i>' : '';
+        return '<button data-lt="'+k+'" onclick="window._reLoanType=this.dataset.lt;renderPage()" class="px-4 py-2 rounded-xl text-sm font-semibold border transition-all '+cls+'">'+icon+v+'</button>';
+      }).join('')
     + '</div>';
 
   // ── 기준월 select (value = yyyymm 키)
@@ -4313,7 +4324,7 @@ function renderRealestate(el) {
     + '<p class="text-xs text-gray-400 mt-0.5">담보 유형별 LTV·지역·담보종류 현황 — 결산자료 기준 (단위: 천만원)</p></div>'
     + dateSelHtml + '</div>'
     + loanTabsHtml
-    + (totalCnt===0 ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700"><i class="fas fa-info-circle mr-2"></i>선택한 결산자료에 <b>'+loanTypeName+'</b> 계약이 없습니다.</div>' : '')
+    + (totalCnt===0 ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700"><i class="fas fa-info-circle mr-2"></i>선택한 결산자료에 <b>'+loanTypeLabel+'</b> 계약이 없습니다.</div>' : '')
     // KPI 카드
     + '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">'
     + '<div class="bg-white rounded-xl border border-blue-200 p-4"><div class="text-xs text-blue-600 mb-1 font-medium"><i class="fas fa-coins mr-1"></i>전체 잔고</div><div style="font-size:22px;font-weight:800;color:#1d4ed8">'+fmtChun(totalBal)+'</div><div class="text-xs text-gray-400 mt-1">'+fmtReCnt(totalCnt)+'</div></div>'
