@@ -4332,6 +4332,15 @@ function renderRealestate(el) {
   (function bindReCharts() {
     if (typeof Chart === 'undefined') return;
 
+    // 부동산 현황 차트는 전역 charts 객체에 등록 안 되므로 canvas별로 기존 인스턴스 제거
+    function safeNewChart(id, config) {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const existing = Chart.getChart(canvas);
+      if (existing) existing.destroy();
+      return new Chart(canvas, config);
+    }
+
     // 공통 옵션
     const pluginNoDataLabel = {
       id: 're-no-data',
@@ -4350,7 +4359,7 @@ function renderRealestate(el) {
       const canvas = document.getElementById('re-chart-odltv');
       if (!canvas) return;
       const d = JSON.parse(canvas.getAttribute('data-chart').replace(/&quot;/g,'"'));
-      new Chart(canvas, {
+      safeNewChart('re-chart-odltv', {
         type: 'bar',
         data: {
           labels: ['미연체', '연체'],
@@ -4393,7 +4402,7 @@ function renderRealestate(el) {
         pointBackgroundColor:'#dc2626', pointRadius:5, pointHoverRadius:7,
         borderWidth:2, tension:0.3, yAxisID:'y2'
       };
-      new Chart(canvas, {
+      safeNewChart('re-chart-region', {
         type: 'bar',
         data: { labels: d.labels, datasets: [...stackDs, lineDs] },
         options: {
@@ -4432,7 +4441,7 @@ function renderRealestate(el) {
         pointBackgroundColor:'#dc2626', pointRadius:4, pointHoverRadius:6,
         borderWidth:2, tension:0.3, yAxisID:'y2'
       };
-      new Chart(canvas, {
+      safeNewChart('re-chart-coltype', {
         type: 'bar',
         data: { labels: d.labels, datasets: [...stackDs, lineDs] },
         options: {
@@ -4460,7 +4469,7 @@ function renderRealestate(el) {
       while (true) {
         var canvas = document.getElementById('re-chart-detail-'+idx);
         if (!canvas) break;
-        (function(cvs) {
+        (function(cvs, chartId) {
           var d = JSON.parse(cvs.getAttribute('data-chart').replace(/&quot;/g,'"'));
           var stackDs = d.bands.map(function(label, i) {
             return {
@@ -4475,7 +4484,7 @@ function renderRealestate(el) {
             pointBackgroundColor:'#dc2626', pointRadius:4, pointHoverRadius:6,
             borderWidth:2, tension:0.3, yAxisID:'y2'
           };
-          new Chart(cvs, {
+          safeNewChart(chartId, {
             type: 'bar',
             data: { labels: d.labels, datasets: stackDs.concat([lineDs]) },
             options: {
@@ -4499,7 +4508,7 @@ function renderRealestate(el) {
             },
             plugins: [pluginNoDataLabel]
           });
-        })(canvas);
+        })(canvas, 're-chart-detail-'+idx);
         idx++;
       }
     })();
