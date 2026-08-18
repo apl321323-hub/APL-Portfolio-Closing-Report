@@ -4129,13 +4129,23 @@ function renderRealestate(el) {
 
   function mkOdLtvCross() {
     const ub = RE_LTV_BANDS.filter(b=>S.all[b.key].bal>0);
-    return '<div class="overflow-auto"><table class="data-table">'
+    // 차트 데이터: 미연체/연체 각각 LTV 구간별 잔고(천만)
+    const chartData = JSON.stringify({
+      bands: ub.map(b=>b.label),
+      colors: ub.map(b=>b.color),
+      nonOd: ub.map(b=>Math.round(S.nonOd[b.key].bal/10000000)),
+      od:    ub.map(b=>Math.round(S.od[b.key].bal/10000000))
+    }).replace(/"/g,'&quot;');
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
+      + '<div class="overflow-auto"><table class="data-table">'
       + '<thead><tr><th class="text-left">구분</th><th>건수</th>' + bandTh(ub) + '<th>합계</th><th>비율</th></tr></thead>'
       + '<tbody>'
       + '<tr><td><span class="badge badge-green">미연체</span></td><td>'+fmtReCnt(nonOdCnt)+'</td>'+bandCells(ub,S.nonOd)+'<td class="font-semibold" style="color:#059669">'+fmtChun(nonOdBal)+'</td><td>'+fmtRePct(nonOdBal,totalBal)+'</td></tr>'
       + '<tr><td><span class="badge badge-red">연체(d&gt;10)</span></td><td>'+fmtReCnt(odCnt)+'</td>'+bandCells(ub,S.od)+'<td class="font-semibold" style="color:#dc2626">'+fmtChun(odBal)+'</td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
       + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td>100%</td></tr>'
-      + '</tbody></table></div>';
+      + '</tbody></table></div>'
+      + '<div><canvas id="re-chart-odltv" height="140" data-chart="'+chartData+'"></canvas></div>'
+      + '</div>';
   }
 
   function mkRegionCross() {
@@ -4152,6 +4162,17 @@ function renderRealestate(el) {
     });
     const detailJson = JSON.stringify(regionDetailMap).replace(/"/g,'&quot;');
 
+    // 차트 데이터: 지역별 LTV 구간 누적 바 + 연체율 꺾은선
+    const chartData = JSON.stringify({
+      labels:   regionRows.map(r=>r.grp),
+      colors:   regionRows.map(r=>RE_REGION_COLORS[r.grp]||'#6b7280'),
+      bands:    ub.map(b=>b.label),
+      bandClrs: ub.map(b=>b.color),
+      balByBand: ub.map(b=>regionRows.map(r=>Math.round(r.all[b.key].bal/10000000))),
+      totals:   regionRows.map(r=>Math.round(r.all.total.bal/10000000)),
+      odRates:  regionRows.map(r=>r.all.total.bal>0?parseFloat((r.od.total.bal/r.all.total.bal*100).toFixed(2)):0)
+    }).replace(/"/g,'&quot;');
+
     const rows = regionRows.map(r=>{
       const dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(RE_REGION_COLORS[r.grp]||'#6b7280')+';margin-right:6px"></span>';
       const color = RE_REGION_COLORS[r.grp]||'#6b7280';
@@ -4165,12 +4186,13 @@ function renderRealestate(el) {
         + '</tr>';
     }).join('');
 
-    return '<div style="position:relative" id="re-region-wrap">'
-      + '<div class="overflow-auto"><table class="data-table">'
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start" id="re-region-wrap">'
+      + '<div><div class="overflow-auto"><table class="data-table">'
       + '<thead><tr><th class="text-left">지역</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + rows
       + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
-      + '</tbody></table></div>'
+      + '</tbody></table></div></div>'
+      + '<div><canvas id="re-chart-region" height="180" data-chart="'+chartData+'"></canvas></div>'
       // 툴팁 DOM (숨김 상태)
       + '<div id="re-region-tooltip" style="display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.13);min-width:320px;max-width:400px;padding:0;pointer-events:none"></div>'
       + '</div>';
@@ -4178,16 +4200,29 @@ function renderRealestate(el) {
 
   function mkColtypeCross() {
     const ub = usedBandsFor(coltypeRows);
+    // 차트 데이터: 담보종류별 LTV 구간 누적 가로 바
+    const chartData = JSON.stringify({
+      labels:    coltypeRows.map(r=>r.ct),
+      colors:    coltypeRows.map(r=>RE_COLTYPE_COLORS[r.ct]||'#6b7280'),
+      bands:     ub.map(b=>b.label),
+      bandClrs:  ub.map(b=>b.color),
+      balByBand: ub.map(b=>coltypeRows.map(r=>Math.round(r.all[b.key].bal/10000000))),
+      totals:    coltypeRows.map(r=>Math.round(r.all.total.bal/10000000)),
+      odRates:   coltypeRows.map(r=>r.all.total.bal>0?parseFloat((r.od.total.bal/r.all.total.bal*100).toFixed(2)):0)
+    }).replace(/"/g,'&quot;');
     const rows = coltypeRows.map(r=>{
       const dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(RE_COLTYPE_COLORS[r.ct]||'#6b7280')+';margin-right:6px"></span>';
       return '<tr><td>'+dot+r.ct+'</td><td>'+fmtReCnt(r.all.total.cnt)+'</td>'+bandCells(ub,r.all)
         +'<td class="font-semibold">'+fmtChun(r.all.total.bal)+'</td><td style="color:#dc2626">'+fmtChun(r.od.total.bal)+'</td><td>'+fmtRePct(r.od.total.bal,r.all.total.bal)+'</td></tr>';
     }).join('');
-    return '<div class="overflow-auto"><table class="data-table">'
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">'
+      + '<div><div class="overflow-auto"><table class="data-table">'
       + '<thead><tr><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + rows
       + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #e5e7eb"><td>합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+bandCellsBold(ub,S.all)+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
-      + '</tbody></table></div>';
+      + '</tbody></table></div></div>'
+      + '<div><canvas id="re-chart-coltype" height="200" data-chart="'+chartData+'"></canvas></div>'
+      + '</div>';
   }
 
   function mkDetailCross() {
@@ -4210,11 +4245,30 @@ function renderRealestate(el) {
       return rowsHtml + sub;
     }).join('');
     const tot = ub.map(b=>'<td><b>'+fmtChun(S.all[b.key].bal)+'</b></td>').join('');
-    return '<div class="overflow-auto"><table class="data-table">'
+
+    // 도넛 차트: 지역별 잔고 비중 + 각 지역 내 담보종류 구성
+    const donutData = JSON.stringify({
+      regions: regions,
+      regColors: regions.map(g=>RE_REGION_COLORS[g]||'#6b7280'),
+      regBals: regions.map(g=>Math.round(detailRows.filter(r=>r.grp===g).reduce((s,r)=>s+r.all.total.bal,0)/10000000)),
+      regOdRates: regions.map(g=>{
+        const rr=detailRows.filter(r=>r.grp===g);
+        const rb=rr.reduce((s,r)=>s+r.all.total.bal,0);
+        const ro=rr.reduce((s,r)=>s+r.od.total.bal,0);
+        return rb>0?parseFloat((ro/rb*100).toFixed(2)):0;
+      })
+    }).replace(/"/g,'&quot;');
+
+    return '<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start">'
+      + '<div><div class="overflow-auto"><table class="data-table">'
       + '<thead><tr><th class="text-left">지역</th><th class="text-left">담보종류</th><th>건수</th>' + bandTh(ub) + '<th>잔고합계</th><th>연체잔고</th><th>연체율</th></tr></thead>'
       + '<tbody>' + bodyHtml
       + '<tr style="background:#f8fafd;font-weight:700;border-top:2px solid #374151"><td colspan="2">전체 합계</td><td>'+fmtReCnt(totalCnt)+'</td>'+tot+'<td><b>'+fmtChun(totalBal)+'</b></td><td style="color:#dc2626"><b>'+fmtChun(odBal)+'</b></td><td>'+fmtRePct(odBal,totalBal)+'</td></tr>'
-      + '</tbody></table></div>';
+      + '</tbody></table></div></div>'
+      + '<div style="display:flex;flex-direction:column;gap:12px">'
+      + '<canvas id="re-chart-detail-donut" height="200" data-chart="'+donutData+'"></canvas>'
+      + '</div>'
+      + '</div>';
   }
 
   // ── LTV 분포 바
@@ -4262,6 +4316,166 @@ function renderRealestate(el) {
     + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-home mr-1.5 text-teal-400"></i>담보종류 × LTV 구간</p>' + mkColtypeCross() + '</div>'
     + '<div class="bg-white rounded-xl border border-gray-200 p-4"><p class="text-xs font-bold text-gray-700 mb-3"><i class="fas fa-map-marked-alt mr-1.5 text-orange-400"></i>지역 × 담보종류 × LTV 상세</p>' + mkDetailCross() + '</div>'
     + '</div>';
+
+  // ── Chart.js 그래프 초기화
+  (function bindReCharts() {
+    if (typeof Chart === 'undefined') return;
+
+    // 공통 옵션
+    const pluginNoDataLabel = {
+      id: 're-no-data',
+      afterDraw: function(chart) {
+        if (chart.data.datasets.every(d=>d.data.every(v=>!v))) {
+          const ctx = chart.ctx; const {width,height} = chart;
+          ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillStyle='#9ca3af'; ctx.font='12px sans-serif';
+          ctx.fillText('데이터 없음', width/2, height/2); ctx.restore();
+        }
+      }
+    };
+
+    // ① 연체·미연체 × LTV 구간 — 누적 가로 바 (미연체/연체 각각 LTV 스택)
+    (function() {
+      const canvas = document.getElementById('re-chart-odltv');
+      if (!canvas) return;
+      const d = JSON.parse(canvas.getAttribute('data-chart').replace(/&quot;/g,'"'));
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: ['미연체', '연체'],
+          datasets: d.bands.map(function(label,i){
+            return { label: label, data: [d.nonOd[i], d.od[i]],
+              backgroundColor: d.colors[i]+'cc', borderColor: d.colors[i], borderWidth:1 };
+          })
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: {
+            legend: { position:'bottom', labels:{ boxWidth:10, font:{size:10} } },
+            tooltip: { callbacks: { label: function(ctx) {
+              return ' '+ctx.dataset.label+': '+ctx.parsed.x.toLocaleString()+'천만';
+            }}}
+          },
+          scales: {
+            x: { stacked:true, ticks:{ font:{size:10}, callback:function(v){ return v.toLocaleString(); } } },
+            y: { stacked:true }
+          }
+        },
+        plugins: [pluginNoDataLabel]
+      });
+    })();
+
+    // ② 지역 × LTV 구간 — 누적 세로 바 + 연체율 꺾은선 (혼합 차트)
+    (function() {
+      const canvas = document.getElementById('re-chart-region');
+      if (!canvas) return;
+      const d = JSON.parse(canvas.getAttribute('data-chart').replace(/&quot;/g,'"'));
+      const stackDs = d.bands.map(function(label,i){
+        return { type:'bar', label: label, data: d.balByBand[i],
+          backgroundColor: d.bandClrs[i]+'cc', borderColor: d.bandClrs[i],
+          borderWidth:1, stack:'bal', yAxisID:'y' };
+      });
+      const lineDs = {
+        type:'line', label:'연체율(%)', data: d.odRates,
+        borderColor:'#dc2626', backgroundColor:'transparent',
+        pointBackgroundColor:'#dc2626', pointRadius:5, pointHoverRadius:7,
+        borderWidth:2, tension:0.3, yAxisID:'y2'
+      };
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: d.labels, datasets: [...stackDs, lineDs] },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position:'bottom', labels:{ boxWidth:10, font:{size:10} } },
+            tooltip: { callbacks: { label: function(ctx) {
+              if (ctx.dataset.yAxisID==='y2') return ' 연체율: '+ctx.parsed.y+'%';
+              return ' '+ctx.dataset.label+': '+ctx.parsed.y.toLocaleString()+'천만';
+            }}}
+          },
+          scales: {
+            y:  { stacked:true, position:'left',  ticks:{ font:{size:10}, callback:function(v){ return v.toLocaleString(); } }, title:{display:true,text:'잔고(천만)',font:{size:10}} },
+            y2: { stacked:false, position:'right', grid:{drawOnChartArea:false},
+                  ticks:{ font:{size:10}, callback:function(v){ return v+'%'; } },
+                  title:{display:true,text:'연체율',font:{size:10}} }
+          }
+        },
+        plugins: [pluginNoDataLabel]
+      });
+    })();
+
+    // ③ 담보종류 × LTV 구간 — 누적 세로 바 + 연체율 꺾은선
+    (function() {
+      const canvas = document.getElementById('re-chart-coltype');
+      if (!canvas) return;
+      const d = JSON.parse(canvas.getAttribute('data-chart').replace(/&quot;/g,'"'));
+      const stackDs = d.bands.map(function(label,i){
+        return { type:'bar', label: label, data: d.balByBand[i],
+          backgroundColor: d.bandClrs[i]+'cc', borderColor: d.bandClrs[i],
+          borderWidth:1, stack:'bal', yAxisID:'y' };
+      });
+      const lineDs = {
+        type:'line', label:'연체율(%)', data: d.odRates,
+        borderColor:'#dc2626', backgroundColor:'transparent',
+        pointBackgroundColor:'#dc2626', pointRadius:4, pointHoverRadius:6,
+        borderWidth:2, tension:0.3, yAxisID:'y2'
+      };
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: d.labels, datasets: [...stackDs, lineDs] },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position:'bottom', labels:{ boxWidth:10, font:{size:10} } },
+            tooltip: { callbacks: { label: function(ctx) {
+              if (ctx.dataset.yAxisID==='y2') return ' 연체율: '+ctx.parsed.y+'%';
+              return ' '+ctx.dataset.label+': '+ctx.parsed.y.toLocaleString()+'천만';
+            }}}
+          },
+          scales: {
+            y:  { stacked:true, position:'left',  ticks:{ font:{size:10}, callback:function(v){ return v.toLocaleString(); } } },
+            y2: { stacked:false, position:'right', grid:{drawOnChartArea:false},
+                  ticks:{ font:{size:10}, callback:function(v){ return v+'%'; } } }
+          }
+        },
+        plugins: [pluginNoDataLabel]
+      });
+    })();
+
+    // ④ 지역별 잔고 도넛 차트
+    (function() {
+      const canvas = document.getElementById('re-chart-detail-donut');
+      if (!canvas) return;
+      const d = JSON.parse(canvas.getAttribute('data-chart').replace(/&quot;/g,'"'));
+      new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+          labels: d.regions,
+          datasets: [{
+            data: d.regBals,
+            backgroundColor: d.regColors.map(function(c){ return c+'cc'; }),
+            borderColor: d.regColors,
+            borderWidth: 2, hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          cutout: '60%',
+          plugins: {
+            legend: { position:'bottom', labels:{ boxWidth:10, font:{size:10} } },
+            tooltip: { callbacks: {
+              label: function(ctx) {
+                const odRate = d.regOdRates[ctx.dataIndex];
+                return [' 잔고: '+ctx.parsed.toLocaleString()+'천만', ' 연체율: '+odRate+'%'];
+              }
+            }}
+          }
+        },
+        plugins: [pluginNoDataLabel]
+      });
+    })();
+  })();
 
   // ── 지역 행 마우스오버 툴팁 이벤트 바인딩
   (function bindRegionTooltip() {
