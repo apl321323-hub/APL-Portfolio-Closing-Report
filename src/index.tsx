@@ -3588,7 +3588,6 @@ function renderOverdue(el) {
 
   // ── 차트 렌더링
   const barBands = [
-    {label:'정상(0일)', amt:g.r0.amt,   cnt:g.r0.cnt,   color:'#059669'},
     {label:'1~10일',    amt:g.r10.amt,  cnt:g.r10.cnt,  color:'#84cc16'},
     {label:'11~30일',   amt:g.r30.amt,  cnt:g.r30.cnt,  color:'#f97316'},
     {label:'31~60일',   amt:g.r60.amt,  cnt:g.r60.cnt,  color:'#ef4444'},
