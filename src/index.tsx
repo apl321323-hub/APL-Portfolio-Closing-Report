@@ -3197,6 +3197,8 @@ function selectNewLoanMonth(key) {
 // ==================== 페이지: 연체 현황 ====================
 // ── 연체 카테고리 구성 패널 상태 (선택 필터: 'all' | 'od10' | 'od30' | 'od90')
 let overdueFilterKey = 'all';
+// ── 연체 차트 그룹 필터 ('all' | 'collateral' | 'credit')
+let overdueChartGroup = 'all';
 
 // ── 그룹 패널 HTML 생성 (중첩 템플릿 리터럴 회피용 분리 함수)
 function _buildOdGrpPanelHtml(odGrpArr, filterBal, totalCatBalMap, totalGrpBalMap, odRateCatMap, odRateGrpMap) {
@@ -3542,10 +3544,19 @@ function renderOverdue(el) {
   <!-- 차트 & 추이 -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div class="card p-5">
-      <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-red-500"></i>연체 구간별 잔고 현황</h3>
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-red-500"></i>연체 구간별 잔고 현황</h3>
+        <div class="flex gap-1" id="od-chart-tabs-bar"></div>
+      </div>
       <div class="chart-wrap-lg"><canvas id="od-bar"></canvas></div>
     </div>
-    \${TREND?\`<div class="card p-5"><h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-line mr-2 text-orange-500"></i>월별 연체율 추이</h3><div class="chart-wrap-lg"><canvas id="od-trend"></canvas></div></div>\`:''}
+    \${TREND?\`<div class="card p-5">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-line mr-2 text-orange-500"></i>월별 연체율 추이</h3>
+        <div class="flex gap-1" id="od-chart-tabs-trend"></div>
+      </div>
+      <div class="chart-wrap-lg"><canvas id="od-trend"></canvas></div>
+    </div>\`:''}
   </div>
 
   <!-- 상품별 연체 현황 테이블 -->
@@ -3586,17 +3597,49 @@ function renderOverdue(el) {
   </div>
 </div>\`;
 
-  // ── 차트 렌더링
+  // ── 차트 렌더링: 그룹 필터별 레코드 재집계
+  const _isCollGroup = r => { const cat=getCategoryOfProduct(r.p||''); return getGroupOfCategory(cat.id).id==='g1'; };
+  const _chartRecs = overdueChartGroup==='collateral' ? all.filter(_isCollGroup)
+                   : overdueChartGroup==='credit'     ? all.filter(r=>!_isCollGroup(r))
+                   : all;
+  const _gf = k => {
+    const arr = _chartRecs.filter(r=>{
+      if(k==='r10') return r.d>=1&&r.d<=10;
+      if(k==='r30') return r.d>=11&&r.d<=30;
+      if(k==='r60') return r.d>=31&&r.d<=60;
+      if(k==='r90') return r.d>=61&&r.d<=90;
+      if(k==='r120') return r.d>=91&&r.d<=120;
+      if(k==='r180') return r.d>=121&&r.d<=180;
+      if(k==='rInf') return r.d>180;
+      return false;
+    });
+    return {cnt:arr.length, amt:arr.reduce((s,r)=>s+r.b,0)};
+  };
   const barBands = [
-    {label:'1~10일',    amt:g.r10.amt,  cnt:g.r10.cnt,  color:'#84cc16'},
-    {label:'11~30일',   amt:g.r30.amt,  cnt:g.r30.cnt,  color:'#f97316'},
-    {label:'31~60일',   amt:g.r60.amt,  cnt:g.r60.cnt,  color:'#ef4444'},
-    {label:'61~90일',   amt:g.r90.amt,  cnt:g.r90.cnt,  color:'#b91c1c'},
-    {label:'91~120일',  amt:g.r120.amt, cnt:g.r120.cnt, color:'#9333ea'},
-    {label:'121~180일', amt:g.r180.amt, cnt:g.r180.cnt, color:'#7e22ce'},
-    {label:'180일↑',    amt:g.rInf.amt, cnt:g.rInf.cnt, color:'#581c87'},
+    {label:'1~10일',    ..._gf('r10'),  color:'#84cc16'},
+    {label:'11~30일',   ..._gf('r30'),  color:'#f97316'},
+    {label:'31~60일',   ..._gf('r60'),  color:'#ef4444'},
+    {label:'61~90일',   ..._gf('r90'),  color:'#b91c1c'},
+    {label:'91~120일',  ..._gf('r120'), color:'#9333ea'},
+    {label:'121~180일', ..._gf('r180'), color:'#7e22ce'},
+    {label:'180일↑',    ..._gf('rInf'), color:'#581c87'},
   ];
+  // ── 탭 버튼 DOM 삽입 (innerHTML 재렌더 후 탭 상태 복원)
+  const _renderChartTabs = (containerId) => {
+    const tabEl = document.getElementById(containerId);
+    if (!tabEl) return;
+    tabEl.innerHTML = [
+      {k:'all',l:'전체'},{k:'collateral',l:'담보'},{k:'credit',l:'신용'}
+    ].map(t=>{
+      const active = overdueChartGroup===t.k;
+      return '<button onclick="setOverdueChartGroup(\''+t.k+'\')"\'
+        +' class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition"'
+        +' style="'+(active?'background:#374151;color:#fff;border-color:#374151':'background:#fff;color:#374151;border-color:#e5e7eb')+'">'+t.l+'</button>';
+    }).join('');
+  };
   setTimeout(()=>{
+    _renderChartTabs('od-chart-tabs-bar');
+    _renderChartTabs('od-chart-tabs-trend');
     // 카테고리 파이
     if(odCatArr.length>0)
       mkPie('od-cat-pie', odCatArr.map(c=>c.name), odCatArr.map(c=>c.bal), odCatArr.map(c=>c.color));
@@ -3611,16 +3654,41 @@ function renderOverdue(el) {
       y:{ticks:{callback:v=>v.toFixed(1)+'억'}},
       y1:{type:'linear',position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>v+'건'}}
     }}});
-    if(TREND) mkLine('od-trend', TREND.months,[
-      {label:'10일연체율', data:TREND.total.overdue.map(o=>o.rate_10), borderColor:'#f97316', borderDash:[4,2]},
-      {label:'30일연체율', data:TREND.total.overdue.map(o=>o.rate_30), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.08)', fill:true}
-    ],{pct:true});
+    // 월별 연체율 추이: 그룹별 분리
+    if(TREND) {
+      let tData10, tData30, lbl10, lbl30;
+      if(overdueChartGroup==='collateral') {
+        const cp=(TREND.products||[]).find(p=>p.name==='담보'||p.id==='collateral'||p.id==='g1');
+        tData10=cp?cp.overdue.map(o=>o.rate_10):TREND.total.overdue.map(o=>o.rate_10);
+        tData30=cp?cp.overdue.map(o=>o.rate_30):TREND.total.overdue.map(o=>o.rate_30);
+        lbl10='담보 10일연체율'; lbl30='담보 30일연체율';
+      } else if(overdueChartGroup==='credit') {
+        const cr=(TREND.products||[]).find(p=>p.name==='신용'||p.id==='credit'||p.id==='g2');
+        tData10=cr?cr.overdue.map(o=>o.rate_10):TREND.total.overdue.map(o=>o.rate_10);
+        tData30=cr?cr.overdue.map(o=>o.rate_30):TREND.total.overdue.map(o=>o.rate_30);
+        lbl10='신용 10일연체율'; lbl30='신용 30일연체율';
+      } else {
+        tData10=TREND.total.overdue.map(o=>o.rate_10);
+        tData30=TREND.total.overdue.map(o=>o.rate_30);
+        lbl10='10일연체율'; lbl30='30일연체율';
+      }
+      mkLine('od-trend', TREND.months,[
+        {label:lbl10, data:tData10, borderColor:'#f97316', borderDash:[4,2]},
+        {label:lbl30, data:tData30, borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.08)', fill:true}
+      ],{pct:true});
+    }
   },50);
 }
 
 // 필터 선택 → 연체 페이지 재렌더
 function setOverdueFilter(key) {
   overdueFilterKey = key;
+  const el = document.getElementById('main-content');
+  renderOverdue(el);
+}
+// 차트 그룹 필터 (전체/담보/신용)
+function setOverdueChartGroup(grp) {
+  overdueChartGroup = grp;
   const el = document.getElementById('main-content');
   renderOverdue(el);
 }
