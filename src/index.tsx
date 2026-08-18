@@ -388,12 +388,12 @@ const CONTRACT_DB_KEY = 'apl_contracts_v1';
 
 // ==================== 카테고리 / 그룹 설정 ====================
 const DEFAULT_CATEGORIES = [
-  { id:'c1', name:'담보상품',      color:'#2563eb', order:1, products:['담보론','담보론(지분대출)'] },
+  { id:'c1', name:'담보상품',      color:'#2563eb', order:1, products:['담보론','담보론(지분대출)','첨담보','차량'] },
   { id:'c2', name:'신용(N계열)',   color:'#059669', order:2, products:['N론','N론(하이브리드)','토마토N론','오투N론','기타N'] },
   { id:'c3', name:'신용(스타/큐브)',color:'#7c3aed', order:3, products:['스타론','스타스위치론','큐브론'] },
   { id:'c4', name:'신용(토마토)',  color:'#d97706', order:4, products:['토마토토탈론','토마토토탈론플러스','토마토론'] },
   { id:'c5', name:'신용(OP/오투)', color:'#0891b2', order:5, products:['OP론','오투론','테일론','프리미엄론'] },
-  { id:'c6', name:'기타신용',      color:'#6b7280', order:6, products:['플러스론','T플러스론','토탈론','레이디론','다이렉트론(A)','다이렉트론(W)','전월세론','우량론','프리론','기타','회생'] },
+  { id:'c6', name:'기타신용',      color:'#6b7280', order:6, products:['플러스론','T플러스론','토탈론','레이디론','다이렉트론(A)','다이렉트론(W)','전월세론','우량론','프리론','기타','회생','신용','신용(기타)'] },
 ];
 const DEFAULT_GROUPS = [
   { id:'g1', name:'담보',       color:'#1e40af', categoryIds:['c1'] },
@@ -3649,16 +3649,38 @@ function renderOverdue(el) {
     // 월별 연체율 추이: 그룹별 분리
     if(TREND) {
       let tData10, tData30, lbl10, lbl30;
-      if(overdueChartGroup==='collateral') {
-        const cp=(TREND.products||[]).find(p=>p.name==='담보'||p.id==='collateral'||p.id==='g1');
-        tData10=cp?cp.overdue.map(o=>o.rate_10):TREND.total.overdue.map(o=>o.rate_10);
-        tData30=cp?cp.overdue.map(o=>o.rate_30):TREND.total.overdue.map(o=>o.rate_30);
-        lbl10='담보 10일연체율'; lbl30='담보 30일연체율';
-      } else if(overdueChartGroup==='credit') {
-        const cr=(TREND.products||[]).find(p=>p.name==='신용'||p.id==='credit'||p.id==='g2');
-        tData10=cr?cr.overdue.map(o=>o.rate_10):TREND.total.overdue.map(o=>o.rate_10);
-        tData30=cr?cr.overdue.map(o=>o.rate_30):TREND.total.overdue.map(o=>o.rate_30);
-        lbl10='신용 10일연체율'; lbl30='신용 30일연체율';
+      if(overdueChartGroup==='collateral' || overdueChartGroup==='credit') {
+        // TREND.products 상품명 → getCategoryOfProduct → getGroupOfCategory 로 담보/신용 분류
+        // 월별로 잔고 가중 연체율 합산
+        const isCollTarget = overdueChartGroup==='collateral';
+        const months = TREND.months || [];
+        // 월 인덱스 맵
+        const mIdx = {};
+        months.forEach((m,i)=>{ mIdx[m]=i; });
+        // 월별 amt_10·amt_30·totalBal 누계
+        const sum10  = new Array(months.length).fill(0);
+        const sum30  = new Array(months.length).fill(0);
+        const sumBal = new Array(months.length).fill(0);
+        (TREND.products||[]).forEach(prod=>{
+          const cat = getCategoryOfProduct(prod.name||'');
+          const grp = getGroupOfCategory(cat.id);
+          const isCollProd = grp.id==='g1';
+          if(isCollTarget !== isCollProd) return; // 그룹 불일치 → 스킵
+          // 잔고 배열 (amount 억 단위)
+          const balArr = prod.balance||[];
+          (prod.overdue||[]).forEach(o=>{
+            const mi = mIdx[o.month];
+            if(mi===undefined) return;
+            const bal = balArr[mi] ? (balArr[mi].amount||0) : 0;
+            sum10[mi]  += (o.amount_10||0);
+            sum30[mi]  += (o.amount_30||0);
+            sumBal[mi] += bal;
+          });
+        });
+        tData10 = sumBal.map((b,i)=> b>0 ? +(sum10[i]/b*100).toFixed(2) : 0);
+        tData30 = sumBal.map((b,i)=> b>0 ? +(sum30[i]/b*100).toFixed(2) : 0);
+        lbl10 = (isCollTarget?'담보':'신용')+' 10일연체율';
+        lbl30 = (isCollTarget?'담보':'신용')+' 30일연체율';
       } else {
         tData10=TREND.total.overdue.map(o=>o.rate_10);
         tData30=TREND.total.overdue.map(o=>o.rate_30);
