@@ -3542,21 +3542,28 @@ function renderOverdue(el) {
   </div>
 
   <!-- 차트 & 추이 -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="card p-5">
-      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-red-500"></i>연체 구간별 잔고 현황</h3>
-        <div class="flex gap-1" id="od-chart-tabs-bar"></div>
+  <div class="card p-4 pb-0">
+    <!-- 공통 탭 헤더 -->
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-4 pb-3 border-b border-gray-100">
+      <span class="text-sm font-bold text-gray-600"><i class="fas fa-filter mr-1.5 text-gray-400"></i>구분</span>
+      <div class="flex gap-1.5">
+        \${[{k:'all',l:'전체'},{k:'collateral',l:'담보'},{k:'credit',l:'신용'}].map(t=>{
+          const act=overdueChartGroup===t.k;
+          return '<button onclick="setOverdueChartGroup('+JSON.stringify(t.k)+')" class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition" style="'+(act?'background:#374151;color:#fff;border-color:#374151':'background:#fff;color:#374151;border-color:#e5e7eb')+'">'+t.l+'</button>';
+        }).join('')}
       </div>
-      <div class="chart-wrap-lg"><canvas id="od-bar"></canvas></div>
     </div>
-    \${TREND?\`<div class="card p-5">
-      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-line mr-2 text-orange-500"></i>월별 연체율 추이</h3>
-        <div class="flex gap-1" id="od-chart-tabs-trend"></div>
+    <!-- 두 차트 나란히 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-4">
+      <div>
+        <p class="text-xs font-bold text-gray-500 mb-2"><i class="fas fa-chart-bar mr-1.5 text-red-400"></i>연체 구간별 잔고 현황</p>
+        <div class="chart-wrap-lg"><canvas id="od-bar"></canvas></div>
       </div>
-      <div class="chart-wrap-lg"><canvas id="od-trend"></canvas></div>
-    </div>\`:''}
+      \${TREND?\`<div>
+        <p class="text-xs font-bold text-gray-500 mb-2"><i class="fas fa-chart-line mr-1.5 text-orange-400"></i>월별 연체율 추이</p>
+        <div class="chart-wrap-lg"><canvas id="od-trend"></canvas></div>
+      </div>\`:''}
+    </div>
   </div>
 
   <!-- 상품별 연체 현황 테이블 -->
@@ -3624,21 +3631,7 @@ function renderOverdue(el) {
     {label:'121~180일', ..._gf('r180'), color:'#7e22ce'},
     {label:'180일↑',    ..._gf('rInf'), color:'#581c87'},
   ];
-  // ── 탭 버튼 DOM 삽입 (innerHTML 재렌더 후 탭 상태 복원)
-  const _renderChartTabs = (containerId) => {
-    const tabEl = document.getElementById(containerId);
-    if (!tabEl) return;
-    tabEl.innerHTML = [
-      {k:'all',l:'전체'},{k:'collateral',l:'담보'},{k:'credit',l:'신용'}
-    ].map(t => {
-      const active = overdueChartGroup === t.k;
-      const s = active ? 'background:#374151;color:#fff;border-color:#374151' : 'background:#fff;color:#374151;border-color:#e5e7eb';
-      return '<button onclick="setOverdueChartGroup(' + JSON.stringify(t.k) + ')" class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition" style="' + s + '">' + t.l + '</button>';
-    }).join('');
-  };
   setTimeout(()=>{
-    _renderChartTabs('od-chart-tabs-bar');
-    _renderChartTabs('od-chart-tabs-trend');
     // 카테고리 파이
     if(odCatArr.length>0)
       mkPie('od-cat-pie', odCatArr.map(c=>c.name), odCatArr.map(c=>c.bal), odCatArr.map(c=>c.color));
