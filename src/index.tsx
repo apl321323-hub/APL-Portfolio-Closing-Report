@@ -113,6 +113,48 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
 </head>
 <body>
 
+<!-- ===== 로그인 오버레이 ===== -->
+<div id="login-overlay" style="display:flex;position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#1a3050 0%,#1e3a5f 60%,#2d5a9e 100%);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;box-shadow:0 25px 60px rgba(0,0,0,.35);width:100%;max-width:400px;padding:40px 36px;">
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="width:56px;height:56px;background:linear-gradient(135deg,#1e3a5f,#2d5a9e);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+        <i class="fas fa-landmark" style="color:#fff;font-size:22px;"></i>
+      </div>
+      <h2 style="font-size:20px;font-weight:800;color:#1e3a5f;margin-bottom:4px;">APL 마감 보고 대시보드</h2>
+      <p style="font-size:13px;color:#6b7a99;">계속하려면 로그인하세요</p>
+    </div>
+
+    <div id="login-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 14px;margin-bottom:16px;color:#dc2626;font-size:13px;text-align:center;">
+      <i class="fas fa-exclamation-circle" style="margin-right:6px;"></i><span id="login-error-msg">아이디 또는 비밀번호가 올바르지 않습니다.</span>
+    </div>
+
+    <form onsubmit="doLogin();return false;" autocomplete="on">
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">아이디</label>
+      <input id="login-id" type="text" name="username" placeholder="아이디 입력" autocomplete="username"
+        style="width:100%;border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:14px;outline:none;transition:border .2s;"
+        onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#d1d5db'">
+    </div>
+    <div style="margin-bottom:22px;">
+      <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">비밀번호</label>
+      <div style="position:relative;">
+        <input id="login-pw" type="password" name="password" placeholder="비밀번호 입력" autocomplete="current-password"
+          style="width:100%;border:1.5px solid #d1d5db;border-radius:10px;padding:11px 42px 11px 14px;font-size:14px;outline:none;transition:border .2s;"
+          onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#d1d5db'">
+        <button type="button" onclick="togglePwVisible()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;" tabindex="-1">
+          <i id="pw-eye-icon" class="fas fa-eye"></i>
+        </button>
+      </div>
+    </div>
+    <button type="submit" id="login-btn"
+      style="width:100%;padding:13px;background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;transition:opacity .2s;"
+      onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+      로그인
+    </button>
+    </form>
+  </div>
+</div>
+
 <!-- HEADER -->
 <header class="header text-white px-5 py-3 flex items-center justify-between shadow-lg flex-shrink-0">
   <div class="flex items-center gap-3">
@@ -128,6 +170,18 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
     <div class="text-right">
       <p class="text-xs text-blue-200">결산기준일</p>
       <p class="text-sm font-bold" id="hdr-basedate">-</p>
+    </div>
+    <div class="flex items-center gap-2 pl-3 border-l border-white border-opacity-20">
+      <div class="w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+        <i class="fas fa-user text-sm"></i>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-blue-200">로그인</p>
+        <p class="text-sm font-bold" id="hdr-username">-</p>
+      </div>
+      <button onclick="doLogout()" class="ml-1 px-2.5 py-1.5 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-lg text-xs text-blue-100 transition-all" title="로그아웃">
+        <i class="fas fa-sign-out-alt"></i>
+      </button>
     </div>
   </div>
 </header>
@@ -405,11 +459,15 @@ let currentPage = 'overview';
 let pendingParsed = null;       // 결산자료 파싱 대기
 let pendingContract = null;     // 계약리스트 파싱 대기
 // ── 빈티지 필터 상태
-let vintageFilterType = 'all';   // 'all' | 'group' | 'category'
-let vintageFilterId   = '';      // 선택된 그룹ID or 카테고리ID
-let vintageFilterProd = '';      // 선택된 상품명 (카테고리/그룹 선택 후 세부 상품)
+let vintageFilterType = 'all';
+let vintageFilterId   = '';
+let vintageFilterProd = '';
 // ── 관리팀 필터 상태
-let selectedMgmtTeam = '';       // '' = 전체, 그 외 = 특정 관리팀명
+let selectedMgmtTeam = '';
+// ── 로그인 세션 (sessionStorage — 탭 닫으면 자동 만료)
+const SESSION_KEY = 'apl_session_v1';
+let currentUser = null;  // { id, name, role, allowedPages }
+
 // ── 결산자료 스토리지
 const DB_KEY = 'apl_months_v1';
 // ── 계약리스트 스토리지
@@ -6485,7 +6543,109 @@ function saveCategories(){
 function resetCategories(){if(!confirm('카테고리 및 그룹을 기본값으로 초기화하시겠습니까?'))return;editCategories=JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));editGroups=JSON.parse(JSON.stringify(DEFAULT_GROUPS));refreshSettingsBody();}
 
 // ==================== 시작 ====================
-init();
+
+// ── 로그인/로그아웃 ──────────────────────────────────────────
+function togglePwVisible() {
+  const pw  = document.getElementById('login-pw');
+  const ico = document.getElementById('pw-eye-icon');
+  if (pw.type === 'password') {
+    pw.type = 'text';
+    ico.className = 'fas fa-eye-slash';
+  } else {
+    pw.type = 'password';
+    ico.className = 'fas fa-eye';
+  }
+}
+window.togglePwVisible = togglePwVisible;
+
+function doLogin() {
+  const id = (document.getElementById('login-id').value || '').trim();
+  const pw = (document.getElementById('login-pw').value || '').trim();
+  const errBox = document.getElementById('login-error');
+  const errMsg = document.getElementById('login-error-msg');
+
+  const users = loadAuthUsers();
+  const user  = users.find(u => u.id === id && u.password === pw);
+
+  if (!user) {
+    errMsg.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
+    errBox.style.display = 'block';
+    document.getElementById('login-pw').value = '';
+    document.getElementById('login-pw').focus();
+    return;
+  }
+
+  // 로그인 성공
+  currentUser = { id: user.id, name: user.name, role: user.role, allowedPages: user.allowedPages };
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+
+  // 로그인 화면 숨기고 앱 시작
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('hdr-username').textContent = user.name + (user.role === 'admin' ? ' (관리자)' : '');
+
+  // 권한에 맞게 사이드바 메뉴 표시/숨김
+  applyMenuPermissions();
+
+  init();
+}
+window.doLogin = doLogin;
+
+function doLogout() {
+  if (!confirm('로그아웃 하시겠습니까?')) return;
+  sessionStorage.removeItem(SESSION_KEY);
+  currentUser = null;
+  // 로그인 화면 복원
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('login-id').value = '';
+  document.getElementById('login-pw').value = '';
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('hdr-username').textContent = '-';
+  document.getElementById('login-id').focus();
+}
+window.doLogout = doLogout;
+
+function applyMenuPermissions() {
+  if (!currentUser) return;
+  if (currentUser.role === 'admin') return; // 관리자는 전체 표시
+  // 허용되지 않은 메뉴 숨김
+  document.querySelectorAll('.sb-item[data-page]').forEach(el => {
+    const page = el.getAttribute('data-page');
+    if (!currentUser.allowedPages.includes(page)) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = '';
+    }
+  });
+  // 현재 페이지가 허용 안되면 첫 허용 페이지로 이동
+  if (!currentUser.allowedPages.includes(currentPage)) {
+    const first = currentUser.allowedPages[0] || 'upload';
+    currentPage = first;
+  }
+}
+
+// ── 세션 복원 (새로고침 시) ──────────────────────────────────
+(function checkSession() {
+  try {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (saved) {
+      currentUser = JSON.parse(saved);
+      document.getElementById('login-overlay').style.display = 'none';
+      document.getElementById('hdr-username').textContent = currentUser.name + (currentUser.role === 'admin' ? ' (관리자)' : '');
+      // DOM 준비 후 메뉴 권한 적용 + init
+      setTimeout(() => {
+        applyMenuPermissions();
+        init();
+      }, 0);
+    } else {
+      // 로그인 화면 표시 상태 유지, Enter 키 포커스
+      setTimeout(() => {
+        const idEl = document.getElementById('login-id');
+        if (idEl) idEl.focus();
+      }, 100);
+    }
+  } catch(_) {}
+})();
+
 </script>
 </body>
 </html>`)
