@@ -1799,7 +1799,8 @@ async function saveUploadedData() {
   await refreshSidebarMonths(key);
   await augmentTrendFromStorage();
   closeUploadModal();
-  await goPage('overview');
+  // 계약리스트와 동일하게: 모달만 닫고 현재 페이지(upload) 갱신 — overview로 이동하지 않음
+  await renderUploadPage(document.getElementById('main-content'));
 }
 
 // ==================== 페이지: 종합 개요 ====================
