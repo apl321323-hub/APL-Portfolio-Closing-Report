@@ -1883,9 +1883,15 @@ function saveContractData() {
 
 async function deleteMonth(yyyymm) {
   if (!confirm(\`\${yyyymm.slice(0,4)}년 \${parseInt(yyyymm.slice(4))}월 데이터를 삭제하시겠습니까?\`)) return;
+  // Supabase에서 직접 삭제
+  try {
+    const delRes = await fetch('/api/db/months/' + yyyymm, { method: 'DELETE' });
+    if (!delRes.ok) console.error('[deleteMonth] Supabase 삭제 실패:', await delRes.text());
+  } catch(e) { console.error('[deleteMonth] 네트워크 오류:', e); }
+  // IDB 캐시에서도 삭제
   const db = await getMonthsDB();
   delete db[yyyymm];
-  await saveMonthsDB(db);
+  await _idbSet(db);
   await refreshSidebarMonths();
   await renderUploadPage(document.getElementById('main-content'));
 }
