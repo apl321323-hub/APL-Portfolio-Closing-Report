@@ -817,6 +817,33 @@ async function augmentTrendFromStorage() {
 
     console.log('[TREND 보완] ' + label + ' 추가 완료 (잔고 ' + (totalBal/100000000).toFixed(0) + '억, 담보 ' + (collAgg.bal/100000000).toFixed(0) + '억, 신용 ' + (creditAgg.bal/100000000).toFixed(0) + '억, ' + totalCnt + '건)');
   }
+
+  // ── 보완 후 TREND.months 기준으로 전체 시계열 재정렬 ──────────────────────
+  // label 형식: "YY.M월" (예: "25.1월", "26.10월")
+  // → 연도·월 숫자 추출 후 오름차순 정렬
+  function monthLabelToNum(m) {
+    const mm = String(m).match(new RegExp('(\\d+)\\.(\\d+)'));
+    if (!mm) return 0;
+    return parseInt(mm[1]) * 100 + parseInt(mm[2]);
+  }
+  const order = TREND.months
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => monthLabelToNum(a.m) - monthLabelToNum(b.m));
+  const idx = order.map(o => o.i);
+
+  TREND.months = idx.map(i => TREND.months[i]);
+  TREND.total.balance   = idx.map(i => TREND.total.balance[i]);
+  TREND.total.new_loans = idx.map(i => TREND.total.new_loans[i]);
+  TREND.total.repay     = idx.map(i => TREND.total.repay[i]);
+  TREND.total.overdue   = idx.map(i => TREND.total.overdue[i]);
+  if (TREND.products) {
+    for (const tp of TREND.products) {
+      if (tp.balance)   tp.balance   = idx.map(i => tp.balance[i]);
+      if (tp.new_loans) tp.new_loans = idx.map(i => tp.new_loans[i]);
+      if (tp.repay)     tp.repay     = idx.map(i => tp.repay[i]);
+      if (tp.overdue)   tp.overdue   = idx.map(i => tp.overdue[i]);
+    }
+  }
 }
 
 async function loadMonthData(yyyymm) {
