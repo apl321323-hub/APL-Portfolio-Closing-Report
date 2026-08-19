@@ -4425,6 +4425,25 @@ async function renderVintage(el) {
   }
   function hmTextColor(rate) { return rate >= 5 ? '#fff' : '#374151'; }
 
+  // ── 취급월별 현재 연체율 집계 (테이블용)
+  const vintMap = {};
+  curRecs.forEach(r => {
+    if (!r.cd || r.cd.length !== 6) return;
+    if (!vintMap[r.cd]) vintMap[r.cd] = { bal:0, od10:0, od30:0, cnt:0, odCnt:0 };
+    const v = vintMap[r.cd];
+    v.bal += r.b||0; v.cnt++;
+    if ((r.d||0) >= 10) { v.od10 += r.b||0; v.odCnt++; }
+    if ((r.d||0) >= 30)   v.od30 += r.b||0;
+  });
+  const vintRows = Object.entries(vintMap)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([ym, v]) => ({
+      ym, label: ym.slice(0,4) + '.' + parseInt(ym.slice(4,6)) + '월',
+      ...v,
+      rate10: v.bal>0 ? +(v.od10/v.bal*100).toFixed(2) : 0,
+      rate30: v.bal>0 ? +(v.od30/v.bal*100).toFixed(2) : 0,
+    }));
+
   // 다월 추이 (필터 적용)
   const trendRows = allKeys
     .map(k => {
@@ -4520,6 +4539,31 @@ async function renderVintage(el) {
     }
   </div>
 
+  <!-- 취급월별 연체 상세 테이블 -->
+  \${vintRows.length > 0 ? \`
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-indigo-400"></i>취급월별 연체 상세 테이블</h3>
+    <div class="overflow-auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>취급월</th><th class="text-right">건수</th><th class="text-right">잔고</th>
+          <th class="text-right">연체건수</th>
+          <th class="text-right">10일↑ 연체잔고</th><th class="text-right">10일↑ 연체율</th>
+          <th class="text-right">30일↑ 연체잔고</th><th class="text-right">30일↑ 연체율</th>
+        </tr></thead>
+        <tbody>\${vintRows.map(v=>\`<tr>
+          <td class="font-medium">\${v.label}</td>
+          <td class="text-right text-gray-600">\${fmtN(v.cnt)}</td>
+          <td class="text-right">\${fmtAmt(v.bal)}</td>
+          <td class="text-right \${v.odCnt>0?'text-orange-600':''}">\${fmtN(v.odCnt)}</td>
+          <td class="text-right \${v.od10>0?'text-orange-500':''}">\${fmtAmt(v.od10)}</td>
+          <td class="text-right font-bold \${v.rate10>=10?'text-red-600':v.rate10>=5?'text-orange-500':''}">\${v.rate10.toFixed(2)}%</td>
+          <td class="text-right \${v.od30>0?'text-red-400':''}">\${fmtAmt(v.od30)}</td>
+          <td class="text-right font-bold \${v.rate30>=10?'text-red-700':v.rate30>=5?'text-red-500':''}">\${v.rate30.toFixed(2)}%</td>
+        </tr>\`).join('')}</tbody>
+      </table>
+    </div>
+  </div>\` : ''}
 
 </div>\`;
 
