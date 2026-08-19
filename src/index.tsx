@@ -4455,9 +4455,6 @@ async function renderVintage(el) {
     \${!hasCd ? '<p class="text-xs text-center text-amber-500 mt-2"><i class="fas fa-info-circle mr-1"></i>결산자료 재업로드 후 데이터 표시</p>' : ''}
   </div>
 
-  <!-- ②③ 2열 그리드: 코호트 곡선(좌) + 히트맵(우) -->
-  <div class="grid grid-cols-2 gap-4 items-start">
-
   <!-- ② 코호트별 누적연체 곡선 -->
   <div class="card p-5">
     <div class="flex items-center justify-between mb-1">
@@ -4513,8 +4510,6 @@ async function renderVintage(el) {
       ).join('')}
     </div>
     \` : '<div class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2"><i class="fas fa-th text-3xl"></i><p class="text-sm text-gray-400">다월 결산자료 적재 후 활성화됩니다</p></div>'}
-  </div>
-  <!-- ②③ 그리드 끝 -->
   </div>
 
   <!-- ④ 다월 포트폴리오 연체율 추이 -->
