@@ -1960,16 +1960,10 @@ function renderOverview(el) {
         {label:'30일연체율(%)',data:TREND.total.overdue.map(o=>o.rate_30),borderColor:'#dc2626',yAxisID:'y1'}
       ],{y1:true});
 
-      // ── 신용/담보 융자잔고 추이 (loan_data 있는 월만 표시) ─────────────────
-      // loan_data 없는 월은 data.json 외부집계값(신용(기타) 혼재)이라 기준 불일치 → 표시 안 함
-      const jan26i = TREND.months.indexOf('26.1월');
-      if(jan26i >= 0){
-        const tProds   = TREND.products || [];
-        const tTotal   = TREND.total;
-
-        // ★ loan_data(__creditByMonth)가 있는 월만 필터링
-        const months26All = TREND.months.slice(jan26i);
-        const months26 = months26All.filter(mn =>
+      // ── 신용/담보 융자잔고 추이 (__creditByMonth 있는 월만 표시) ─────────────
+      {
+        // __creditByMonth에 값이 있는 월만 — 연도 무관하게 정렬된 순서대로
+        const months26 = TREND.months.filter(mn =>
           TREND.__creditByMonth && TREND.__creditByMonth[mn] !== undefined
         );
 
@@ -1986,9 +1980,8 @@ function renderOverview(el) {
           if(el) el.innerHTML='<div class="flex items-center justify-center h-64 text-gray-400 text-sm">결산자료(loan_data) 없음 — 신용/담보 분리 불가</div>';
         }
 
-        // ── 신규대출: CATEGORIES/GROUPS 기준 (loan_data 있는 월만) ──────────
-        // __newByCatMonth가 있는 월만 사용 (없는 월은 표시 안 함)
-        const nlMonths = months26All.filter(mn =>
+        // ── 신규대출: __newByCatMonth 있는 월만 ──────────────────────────────
+        const nlMonths = TREND.months.filter(mn =>
           TREND.__newByCatMonth && TREND.__newByCatMonth[mn] !== undefined
         );
 
@@ -1997,7 +1990,6 @@ function renderOverview(el) {
         const g2R = grpsNowR.find(g=>g.id==='g2') || {categoryIds:[]};
         const g1R = grpsNowR.find(g=>g.id==='g1') || {categoryIds:[]};
 
-        // 카테고리 색상 팔레트
         const CAT_COLORS = ['#2563eb','#7c3aed','#dc2626','#059669','#ea580c','#0891b2','#be185d','#65a30d'];
 
         if(nlMonths.length > 0){
