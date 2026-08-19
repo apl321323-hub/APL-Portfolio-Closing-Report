@@ -3839,10 +3839,11 @@ async function renderOverdue(el) {
   };
 
   // ── KPI 카드 렌더러
-  const mkCard = (title, badge, iconCls, mainColor, bgColor, mainData, subHtml, diffHtml) => {
+  const mkCard = (title, badge, iconCls, mainColor, bgColor, mainData, subHtml, diffHtml, topHtml) => {
     const amtPct = pct(mainData.amt);
     return \`
     <div class="kpi-card p-5 flex flex-col">
+      \${topHtml ? \`<div class="mb-2">\${topHtml}</div>\` : ''}
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2">
           <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:\${bgColor}">
@@ -3955,7 +3956,11 @@ async function renderOverdue(el) {
   <!-- KPI 4카드 -->
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
     \${mkCard('정상(0일)', '정상', 'fas fa-check-circle', '#059669', '#f0fdf4', card1,
-      subRow('1~10일', 'r10', '#65a30d'), prevCard ? diffBadge(card1, prevCard.c1, true) : '')}
+      subRow('1~10일', 'r10', '#65a30d'), prevCard ? diffBadge(card1, prevCard.c1, true) : '',
+      \`<div class="flex items-center justify-between px-0.5">
+        <span class="text-xs text-gray-400 font-medium">전체 잔고</span>
+        <span class="text-sm font-black text-gray-700">\${fmtAmt(totalBal)}</span>
+      </div>\`)}
     \${mkCard('10일 초과', '주의', 'fas fa-exclamation-circle', '#d97706', '#fff7ed', card2,
       subRow('11~30일', 'r30', '#f97316'), prevCard ? diffBadge(card2, prevCard.c2, false) : '')}
     \${mkCard('30일 초과', '경고', 'fas fa-triangle-exclamation', '#dc2626', '#fef2f2', card3,
