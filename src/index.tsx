@@ -363,6 +363,11 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
         <span class="sb-label">계약리스트 업로드</span>
         <span class="sb-badge" id="sb-contract-count">0</span>
       </div>
+      <div class="sb-item" data-page="sales" onclick="goPage('sales')">
+        <i class="sb-icon fas fa-clipboard-list"></i>
+        <span class="sb-label">접수현황 분석</span>
+        <span class="sb-badge" id="sb-sales-count">0</span>
+      </div>
 
       <div class="sb-divider"></div>
       <div class="sb-section">시스템</div>
@@ -526,6 +531,103 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
   </div>
 </div>
 
+<!-- ====== 영업리스트 업로드 모달 ====== -->
+<div class="modal-overlay" id="sales-upload-modal">
+  <div class="modal upload-modal">
+    <div class="modal-header flex items-center justify-between w-full">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-50">
+          <i class="fas fa-clipboard-list text-indigo-600"></i>
+        </div>
+        <div>
+          <h2 class="font-bold text-gray-800">영업리스트 업로드</h2>
+          <p class="text-xs text-gray-500">접수현황 분석용 영업리스트(xlsx)를 업로드합니다</p>
+        </div>
+      </div>
+      <button onclick="closeSalesUploadModal()" class="text-gray-400 hover:text-gray-600 ml-4"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-5">
+        <label class="block text-sm font-bold text-gray-700 mb-2">기준월 선택 <span class="text-red-500">*</span></label>
+        <div class="flex gap-3">
+          <select id="sales-upload-year" class="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"></select>
+          <select id="sales-upload-month" class="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
+            <option value="01">1월</option><option value="02">2월</option><option value="03">3월</option>
+            <option value="04">4월</option><option value="05">5월</option><option value="06">6월</option>
+            <option value="07" selected>7월</option><option value="08">8월</option><option value="09">9월</option>
+            <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
+          </select>
+          <span class="flex items-center text-sm text-gray-500">기준 영업리스트</span>
+        </div>
+      </div>
+      <div class="upload-zone mb-5"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleSalesDrop(event)"
+        onclick="document.getElementById('sales-file-input').click()">
+        <input type="file" id="sales-file-input" accept=".xlsx,.xls" class="hidden" onchange="handleSalesFileSelect(event)">
+        <i class="fas fa-clipboard-list text-3xl text-indigo-400 mb-3"></i>
+        <p class="text-gray-600 font-medium">영업리스트.xlsx 파일을 드래그하거나 클릭하여 선택</p>
+        <p class="text-xs text-gray-400 mt-1">광고매체(A) · 상품명(C) · 접수일(D) · 심사자(I) · 계약일(T) · 계약금액(U)</p>
+      </div>
+      <div id="sales-upload-file-name" class="hidden mb-3 px-3 py-2 bg-indigo-50 rounded-lg text-sm text-indigo-700 font-medium"><span></span></div>
+      <div id="sales-parse-progress" class="hidden mb-4">
+        <div class="flex items-center justify-between mb-1">
+          <span id="sales-parse-msg" class="text-xs text-gray-500">처리 중...</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-2">
+          <div id="sales-parse-bar" class="bg-indigo-500 h-2 rounded-full transition-all" style="width:0%"></div>
+        </div>
+      </div>
+      <div id="sales-parse-result" class="hidden mb-4 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+        <p class="text-xs font-bold text-indigo-700 mb-2"><i class="fas fa-check-circle mr-1"></i>파싱 완료</p>
+        <div id="sales-parse-summary" class="text-xs text-indigo-800 space-y-1"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeSalesUploadModal()" class="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">취소</button>
+      <button id="save-sales-btn" onclick="saveSalesData()" disabled class="px-5 py-2 text-sm bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">저장 및 적용</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 관리점 직원명단 모달 ====== -->
+<div class="modal-overlay" id="branch-staff-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header flex items-center justify-between w-full">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50">
+          <i class="fas fa-users-cog text-blue-600"></i>
+        </div>
+        <div>
+          <h2 class="font-bold text-gray-800">관리점 직원명단 설정</h2>
+          <p class="text-xs text-gray-500">심사자를 관리점에 배정하면 접수현황에서 관리점별 분석이 가능합니다</p>
+        </div>
+      </div>
+      <button onclick="closeBranchStaffModal()" class="text-gray-400 hover:text-gray-600 ml-4"><i class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="modal-body">
+      <!-- 새 관리점 추가 -->
+      <div class="flex gap-2 mb-4">
+        <input type="text" id="bs-new-branch-input" placeholder="새 관리점명 입력 (예: 본점, 강남점 ...)"
+          class="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 focus:outline-none focus:border-blue-400"
+          onkeydown="if(event.key==='Enter') window._bsAddBranch()">
+        <button onclick="window._bsAddBranch()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+          <i class="fas fa-plus mr-1"></i>관리점 추가
+        </button>
+      </div>
+      <!-- 관리점 목록 -->
+      <div id="branch-staff-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeBranchStaffModal()" class="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">닫기</button>
+      <button onclick="window._bsSaveAll()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700">
+        <i class="fas fa-save mr-1"></i>저장 및 닫기
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ==================== 전역 상태 ====================
 let LOAN = null;       // 현재 선택된 월 결산 데이터
@@ -547,6 +649,10 @@ let currentUser = null;  // { id, name, role, allowedPages }
 const DB_KEY = 'apl_months_v1';
 // ── 계약리스트 스토리지
 const CONTRACT_DB_KEY = 'apl_contracts_v1';
+// ── 영업리스트(접수현황) 스토리지
+const SALES_DB_KEY = 'apl_sales_v1';
+// ── 관리점 직원명단 스토리지
+const BRANCH_STAFF_KEY = 'apl_branch_staff_v1';
 
 // ==================== 카테고리 / 그룹 설정 ====================
 const DEFAULT_CATEGORIES = [
@@ -607,6 +713,7 @@ const MENU_LIST = [
   { page:'trend',          label:'월별 추이' },
   { page:'upload',         label:'결산자료 업로드' },
   { page:'contract',       label:'계약리스트' },
+  { page:'sales',          label:'접수현황' },
   { page:'settings',       label:'시스템 설정' },
   { page:'auth',           label:'권한 설정' },
   { page:'ipallow',        label:'허용 IP 등록' },
@@ -890,6 +997,9 @@ async function init() {
       const badge = document.getElementById('sb-contract-count');
       if (badge) badge.textContent = Object.keys(getContractDB()).length;
     });
+    // 4. 영업리스트 배지 초기화
+    const salesBadge = document.getElementById('sb-sales-count');
+    if (salesBadge) { const n = Object.keys(getSalesDB()).length; salesBadge.textContent = n || ''; }
   } catch(e) {
     console.error('[init] 초기화 실패:', e);
     const mc = document.getElementById('main-content');
@@ -1203,7 +1313,7 @@ async function refreshMgmtTeamSelect() {
 async function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
-  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate' && currentPage !== 'vintage' && currentPage !== 'auth' && currentPage !== 'ipallow') {
+  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate' && currentPage !== 'vintage' && currentPage !== 'auth' && currentPage !== 'ipallow' && currentPage !== 'sales') {
     el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
       <i class="fas fa-cloud-upload-alt text-5xl text-blue-200"></i>
       <p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>
@@ -1237,6 +1347,7 @@ async function renderPage() {
       case 'settings':  renderSettingsPage(el);  break;
       case 'auth':      renderAuthPage(el);      break;
       case 'ipallow':   renderIPAllowPage(el);   break;
+      case 'sales':     renderSalesPage(el);     break;
     }
   } finally {
     // ── 원본 records 복원 (필터링 영구 적용 방지)
@@ -1903,6 +2014,619 @@ async function deleteMonth(yyyymm) {
   await refreshSidebarMonths();
   await renderUploadPage(document.getElementById('main-content'));
 }
+
+// ==================== 영업리스트(접수현황) 스토리지 ====================
+function getSalesDB() {
+  try { return JSON.parse(localStorage.getItem(SALES_DB_KEY) || '{}'); } catch(e){ return {}; }
+}
+function saveSalesDB(db) {
+  localStorage.setItem(SALES_DB_KEY, JSON.stringify(db));
+}
+function getSalesKeys() {
+  return Object.keys(getSalesDB()).sort().reverse();
+}
+
+// ── 관리점 직원명단 스토리지
+function loadBranchStaff() {
+  try {
+    const s = localStorage.getItem(BRANCH_STAFF_KEY);
+    return s ? JSON.parse(s) : [];
+    // 형태: [ { branch:'본점', names:['김지선','이주아','정주하'] }, ... ]
+  } catch(e){ return []; }
+}
+function saveBranchStaff(list) {
+  localStorage.setItem(BRANCH_STAFF_KEY, JSON.stringify(list));
+}
+// 심사자명 → 관리점 조회
+function getBranchOfReviewer(name) {
+  const list = loadBranchStaff();
+  for (const b of list) {
+    if ((b.names || []).includes(name)) return b.branch;
+  }
+  return '미지정';
+}
+
+// ==================== 페이지: 접수현황 ====================
+function renderSalesPage(el) {
+  const db   = getSalesDB();
+  const keys = getSalesKeys();
+  const branchList = loadBranchStaff();
+
+  // 배지 업데이트
+  const badge = document.getElementById('sb-sales-count');
+  if (badge) badge.textContent = keys.length || '';
+
+  // ── 업로드된 목록이 없을 때
+  if (keys.length === 0) {
+    el.innerHTML = \`
+<div class="space-y-5">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-bold">접수현황 분석</h2>
+      <p class="text-sm text-gray-500">영업리스트(xlsx)를 업로드하여 접수·승인·심사자 현황을 분석합니다</p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="openBranchStaffModal()" class="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200 border border-gray-200">
+        <i class="fas fa-users-cog"></i> 관리점 직원명단
+      </button>
+      <button onclick="openSalesUploadModal()" class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">
+        <i class="fas fa-upload"></i> 영업리스트 업로드
+      </button>
+    </div>
+  </div>
+  <div class="card p-12 text-center text-gray-400">
+    <i class="fas fa-clipboard-list text-5xl mb-4 text-blue-200"></i>
+    <p class="text-sm font-medium">업로드된 영업리스트가 없습니다</p>
+    <button onclick="openSalesUploadModal()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+      첫 번째 영업리스트 업로드
+    </button>
+  </div>
+</div>\`;
+    return;
+  }
+
+  // ── 현재 선택 키 (상태 변수 없으면 최신)
+  if (!window._salesSelectedKey || !db[window._salesSelectedKey]) {
+    window._salesSelectedKey = keys[0];
+  }
+  const selKey = window._salesSelectedKey;
+  const snap   = db[selKey];
+  const recs   = snap.records || [];
+
+  // ── 분석 탭 상태
+  if (!window._salesTab) window._salesTab = 'agent';
+
+  // ── 헬퍼
+  const S = arr => arr.length;
+  const approved = arr => arr.filter(r => r.status === '계약');
+  const rate = (a, b) => b > 0 ? (a/b*100).toFixed(1)+'%' : '-';
+
+  // ── KPI 집계
+  const total   = recs.length;
+  const approvedRecs = approved(recs);
+  const totalAmt = approvedRecs.reduce((s,r)=>s+(r.contractAmt||0),0);
+  const approvalRate = rate(approvedRecs.length, total);
+
+  // ── 에이전트별 집계
+  const agentMap = {};
+  recs.forEach(r => {
+    const ag = r.agent || '미상';
+    if (!agentMap[ag]) agentMap[ag] = { recv:0, appr:0, amt:0 };
+    agentMap[ag].recv++;
+    if (r.status === '계약') { agentMap[ag].appr++; agentMap[ag].amt += r.contractAmt||0; }
+  });
+  const agentArr = Object.entries(agentMap).sort((a,b)=>b[1].recv-a[1].recv);
+
+  // ── 상품별 집계
+  const prodMap = {};
+  recs.forEach(r => {
+    const p = r.product || '미상';
+    if (!prodMap[p]) prodMap[p] = { recv:0, appr:0, amt:0 };
+    prodMap[p].recv++;
+    if (r.status === '계약') { prodMap[p].appr++; prodMap[p].amt += r.contractAmt||0; }
+  });
+  const prodArr = Object.entries(prodMap).sort((a,b)=>b[1].recv-a[1].recv);
+
+  // ── 심사자별 집계 (관리점 포함)
+  const reviewerMap = {};
+  recs.forEach(r => {
+    const rv = r.reviewer || '미배정';
+    const br = getBranchOfReviewer(rv);
+    if (!reviewerMap[rv]) reviewerMap[rv] = { branch: br, recv:0, appr:0, amt:0 };
+    reviewerMap[rv].recv++;
+    if (r.status === '계약') { reviewerMap[rv].appr++; reviewerMap[rv].amt += r.contractAmt||0; }
+  });
+  const reviewerArr = Object.entries(reviewerMap).sort((a,b)=>b[1].recv-a[1].recv);
+
+  // ── 관리점별 집계
+  const branchMap = {};
+  recs.forEach(r => {
+    const rv = r.reviewer || '';
+    const br = getBranchOfReviewer(rv);
+    if (!branchMap[br]) branchMap[br] = { recv:0, appr:0, amt:0 };
+    branchMap[br].recv++;
+    if (r.status === '계약') { branchMap[br].appr++; branchMap[br].amt += r.contractAmt||0; }
+  });
+  const branchArr = Object.entries(branchMap).sort((a,b)=>b[1].recv-a[1].recv);
+
+  // ── 탭 콘텐츠 렌더
+  const tabContent = () => {
+    const tab = window._salesTab;
+    const thCls = 'px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase bg-gray-50';
+    const tdCls = 'px-3 py-2 text-sm';
+
+    if (tab === 'agent') {
+      return \`<div class="overflow-auto"><table class="data-table w-full">
+        <thead><tr>
+          <th class="\${thCls}">에이전트(광고매체)</th>
+          <th class="\${thCls} text-right">접수</th>
+          <th class="\${thCls} text-right">계약(승인)</th>
+          <th class="\${thCls} text-right">승인율</th>
+          <th class="\${thCls} text-right">계약금액</th>
+        </tr></thead>
+        <tbody>
+          \${agentArr.map(([ag, g]) => \`<tr class="hover:bg-gray-50">
+            <td class="\${tdCls} font-medium">\${ag}</td>
+            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
+            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
+            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
+            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+    }
+    if (tab === 'product') {
+      return \`<div class="overflow-auto"><table class="data-table w-full">
+        <thead><tr>
+          <th class="\${thCls}">상품명</th>
+          <th class="\${thCls} text-right">접수</th>
+          <th class="\${thCls} text-right">계약(승인)</th>
+          <th class="\${thCls} text-right">승인율</th>
+          <th class="\${thCls} text-right">계약금액</th>
+        </tr></thead>
+        <tbody>
+          \${prodArr.map(([p, g]) => \`<tr class="hover:bg-gray-50">
+            <td class="\${tdCls} font-medium">\${p}</td>
+            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
+            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
+            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
+            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+    }
+    if (tab === 'reviewer') {
+      return \`<div class="overflow-auto"><table class="data-table w-full">
+        <thead><tr>
+          <th class="\${thCls}">관리점</th>
+          <th class="\${thCls}">심사자</th>
+          <th class="\${thCls} text-right">접수</th>
+          <th class="\${thCls} text-right">계약(승인)</th>
+          <th class="\${thCls} text-right">승인율</th>
+          <th class="\${thCls} text-right">계약금액</th>
+        </tr></thead>
+        <tbody>
+          \${reviewerArr.map(([rv, g]) => \`<tr class="hover:bg-gray-50">
+            <td class="\${tdCls} text-xs text-gray-500">\${g.branch}</td>
+            <td class="\${tdCls} font-medium">\${rv}</td>
+            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
+            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
+            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
+            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+    }
+    if (tab === 'branch') {
+      return \`<div class="overflow-auto"><table class="data-table w-full">
+        <thead><tr>
+          <th class="\${thCls}">관리점</th>
+          <th class="\${thCls} text-right">접수</th>
+          <th class="\${thCls} text-right">계약(승인)</th>
+          <th class="\${thCls} text-right">승인율</th>
+          <th class="\${thCls} text-right">계약금액</th>
+        </tr></thead>
+        <tbody>
+          \${branchArr.map(([br, g]) => \`<tr class="hover:bg-gray-50">
+            <td class="\${tdCls} font-bold">\${br}</td>
+            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
+            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
+            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
+            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+    }
+    return '';
+  };
+
+  const tabBtn = (key, label, icon) => {
+    const active = window._salesTab === key;
+    return \`<button onclick="window._salesTab='\${key}';renderSalesPage(document.getElementById('main-content'))"
+      class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all \${active?'bg-blue-600 text-white shadow':'text-gray-600 hover:bg-gray-100'}">
+      <i class="\${icon}"></i>\${label}
+    </button>\`;
+  };
+
+  const ym = selKey;
+  const y = ym.slice(0,4), mo = parseInt(ym.slice(4));
+
+  el.innerHTML = \`
+<div class="space-y-5">
+  <!-- 헤더 -->
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h2 class="text-lg font-bold">접수현황 분석</h2>
+      <p class="text-sm text-gray-500">\${snap.base_date ? snap.base_date.slice(0,7) : y+'년 '+mo+'월'} 영업리스트 — 총 \${fmtN(total)}건</p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="openBranchStaffModal()" class="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-200 border border-gray-200">
+        <i class="fas fa-users-cog"></i> 관리점 직원명단
+      </button>
+      <button onclick="openSalesUploadModal()" class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">
+        <i class="fas fa-upload"></i> 업로드
+      </button>
+    </div>
+  </div>
+
+  <!-- 파일 탭 선택 -->
+  \${keys.length > 1 ? \`<div class="card p-3">
+    <p class="text-xs text-gray-500 mb-2 font-medium">업로드된 파일 선택</p>
+    <div class="flex flex-wrap gap-2">
+      \${keys.map(k => {
+        const d = db[k]; const y2=k.slice(0,4),m2=parseInt(k.slice(4));
+        const active = k===selKey;
+        return \`<button onclick="window._salesSelectedKey='\${k}';renderSalesPage(document.getElementById('main-content'))"
+          class="px-3 py-1 rounded-lg text-xs font-bold border \${active?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}">\${y2}년 \${m2}월</button>\`;
+      }).join('')}
+    </div>
+  </div>\` : ''}
+
+  <!-- KPI 카드 4개 -->
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="kpi-card p-4">
+      <p class="text-xs text-gray-400 font-medium mb-1"><i class="fas fa-inbox mr-1 text-blue-400"></i>총 접수</p>
+      <p class="text-2xl font-black text-blue-600">\${fmtN(total)}<span class="text-sm font-normal text-gray-400 ml-1">건</span></p>
+    </div>
+    <div class="kpi-card p-4">
+      <p class="text-xs text-gray-400 font-medium mb-1"><i class="fas fa-check-circle mr-1 text-green-500"></i>계약(승인)</p>
+      <p class="text-2xl font-black text-green-600">\${fmtN(approvedRecs.length)}<span class="text-sm font-normal text-gray-400 ml-1">건</span></p>
+    </div>
+    <div class="kpi-card p-4">
+      <p class="text-xs text-gray-400 font-medium mb-1"><i class="fas fa-percentage mr-1 text-indigo-500"></i>승인율</p>
+      <p class="text-2xl font-black text-indigo-600">\${approvalRate}</p>
+    </div>
+    <div class="kpi-card p-4">
+      <p class="text-xs text-gray-400 font-medium mb-1"><i class="fas fa-coins mr-1 text-yellow-500"></i>계약금액 합계</p>
+      <p class="text-2xl font-black text-yellow-600">\${totalAmt>0?fmtAmt(totalAmt):'-'}</p>
+    </div>
+  </div>
+
+  <!-- 분석 탭 -->
+  <div class="card overflow-hidden">
+    <div class="flex items-center gap-2 p-4 border-b border-gray-100 flex-wrap">
+      \${tabBtn('agent',    '에이전트별', 'fas fa-ad')}
+      \${tabBtn('product',  '상품별',     'fas fa-tags')}
+      \${tabBtn('reviewer', '심사자별',   'fas fa-user-check')}
+      \${tabBtn('branch',   '관리점별',   'fas fa-building')}
+    </div>
+    <div class="p-4">
+      \${tabContent()}
+    </div>
+  </div>
+
+  <!-- 업로드 목록 -->
+  <div class="card p-4">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-database mr-2 text-indigo-400"></i>저장된 영업리스트 (\${keys.length}건)</h3>
+    <div class="space-y-2">
+      \${keys.map(k => {
+        const d = db[k]; const y2=k.slice(0,4), m2=parseInt(k.slice(4));
+        const isActive = k===selKey;
+        return \`<div class="month-row \${isActive?'border-blue-300 bg-blue-50':''}">
+          <div class="month-dot \${isActive?'bg-blue-500':'bg-green-400'}"></div>
+          <div class="flex-1">
+            <span class="font-bold text-gray-800">\${y2}년 \${m2}월</span>
+            \${isActive?'<span class="badge badge-blue ml-2">선택중</span>':''}
+            <p class="text-xs text-gray-500 mt-0.5">기준 \${d.base_date||'-'} · \${fmtN(d.records?.length||0)}건 · 업로드 \${d.uploaded_at||'-'}</p>
+          </div>
+          <button onclick="window._salesSelectedKey='\${k}';renderSalesPage(document.getElementById('main-content'))"
+            class="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100">
+            <i class="fas fa-chart-bar mr-1"></i>분석 보기
+          </button>
+          <button onclick="deleteSales('\${k}')" class="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+            <i class="fas fa-trash mr-1"></i>삭제
+          </button>
+        </div>\`;
+      }).join('')}
+    </div>
+  </div>
+</div>\`;
+}
+
+function deleteSales(key) {
+  const y = key.slice(0,4), mo = parseInt(key.slice(4));
+  if (!confirm(\`\${y}년 \${mo}월 영업리스트를 삭제하시겠습니까?\`)) return;
+  const db = getSalesDB();
+  delete db[key];
+  saveSalesDB(db);
+  if (window._salesSelectedKey === key) window._salesSelectedKey = null;
+  renderSalesPage(document.getElementById('main-content'));
+}
+
+// ==================== 영업리스트 업로드 모달 ====================
+function openSalesUploadModal() {
+  // 연도 옵션 생성
+  const yearSel = document.getElementById('sales-upload-year');
+  if (!yearSel) return;
+  const now = new Date();
+  yearSel.innerHTML = '';
+  for (let y = now.getFullYear(); y >= 2020; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y + '년';
+    if (y === now.getFullYear()) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+  // 현재 월 선택
+  const moSel = document.getElementById('sales-upload-month');
+  if (moSel) moSel.value = String(now.getMonth() + 1).padStart(2, '0');
+  document.getElementById('sales-upload-file-name').classList.add('hidden');
+  document.getElementById('sales-parse-progress').classList.add('hidden');
+  document.getElementById('sales-parse-result').classList.add('hidden');
+  document.getElementById('save-sales-btn').disabled = true;
+  window._pendingSales = null;
+  document.getElementById('sales-upload-modal').classList.add('open');
+}
+function closeSalesUploadModal() {
+  document.getElementById('sales-upload-modal').classList.remove('open');
+}
+function handleSalesDrop(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('dragover');
+  const file = event.dataTransfer.files[0];
+  if (file) processSalesFile(file);
+}
+function handleSalesFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) processSalesFile(file);
+}
+
+function processSalesFile(file) {
+  if (!file.name.match(/\\.xlsx?$/i)) { alert('xlsx 파일만 지원합니다.'); return; }
+  document.getElementById('sales-upload-file-name').querySelector('span').textContent = '📎 ' + file.name;
+  document.getElementById('sales-upload-file-name').classList.remove('hidden');
+  document.getElementById('sales-parse-progress').classList.remove('hidden');
+  document.getElementById('sales-parse-result').classList.add('hidden');
+  document.getElementById('save-sales-btn').disabled = true;
+
+  const setP = (pct, msg) => {
+    document.getElementById('sales-parse-bar').style.width = pct + '%';
+    document.getElementById('sales-parse-msg').textContent = msg;
+  };
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      setP(30, '엑셀 파싱 중...');
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      setP(60, '데이터 변환 중...');
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (rows.length < 2) throw new Error('데이터가 없습니다');
+
+      const headers = rows[0];
+      const hIdx = name => headers.indexOf(name);
+
+      // 컬럼 매핑: A=광고매체, C=상품명, D=접수일, I=심사자, T=계약일, U=계약금액, R=처리상태
+      const colAgent    = hIdx('광고메체') >= 0 ? hIdx('광고메체') : hIdx('광고매체');
+      const colProduct  = hIdx('상품명');
+      const colRecvDate = hIdx('접수일');
+      const colReviewer = hIdx('심사자');
+      const colContDate = hIdx('계약일');
+      const colContAmt  = hIdx('계약금액');
+      const colStatus   = hIdx('처리상태');
+
+      if (colProduct < 0) throw new Error('상품명 컬럼을 찾을 수 없습니다');
+
+      setP(80, '레코드 생성 중...');
+      const records = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || (!row[colProduct] && !row[colAgent])) continue;
+        const rawDate = row[colRecvDate];
+        let recvDate = '';
+        if (rawDate instanceof Date) {
+          recvDate = rawDate.toISOString().slice(0, 10);
+        } else if (typeof rawDate === 'string') {
+          recvDate = rawDate.slice(0, 10);
+        }
+        const rawContDate = row[colContDate];
+        let contDate = '';
+        if (rawContDate instanceof Date) {
+          contDate = rawContDate.toISOString().slice(0, 10);
+        } else if (typeof rawContDate === 'string') {
+          contDate = rawContDate.slice(0, 10);
+        }
+        records.push({
+          agent:       String(row[colAgent]    || '').trim(),
+          product:     String(row[colProduct]  || '').trim(),
+          recvDate,
+          reviewer:    String(row[colReviewer] || '').trim(),
+          contDate,
+          contractAmt: parseFloat(row[colContAmt] || 0) || 0,
+          status:      String(row[colStatus]   || '').trim(),
+        });
+      }
+
+      setP(95, '요약 생성 중...');
+      const y  = document.getElementById('sales-upload-year').value;
+      const mo = document.getElementById('sales-upload-month').value;
+      const lastDay = new Date(parseInt(y), parseInt(mo), 0).getDate();
+      window._pendingSales = {
+        base_date: y + '-' + mo + '-' + String(lastDay).padStart(2,'0'),
+        records,
+        count: records.length,
+        uploaded_at: new Date().toLocaleDateString('ko-KR')
+      };
+
+      const approved = records.filter(r => r.status === '계약');
+      const agents   = new Set(records.map(r=>r.agent)).size;
+      const prods    = new Set(records.map(r=>r.product)).size;
+      const reviewers = new Set(records.filter(r=>r.reviewer).map(r=>r.reviewer)).size;
+
+      document.getElementById('sales-parse-progress').classList.add('hidden');
+      document.getElementById('sales-parse-result').classList.remove('hidden');
+      document.getElementById('sales-parse-summary').innerHTML = \`
+        <div class="grid grid-cols-2 gap-2 text-sm">
+          <div>• 총 접수: <strong>\${fmtN(records.length)}건</strong></div>
+          <div>• 계약(승인): <strong class="text-green-700">\${fmtN(approved.length)}건</strong></div>
+          <div>• 에이전트: <strong>\${agents}개</strong></div>
+          <div>• 상품: <strong>\${prods}개</strong></div>
+          <div>• 심사자: <strong>\${reviewers}명</strong></div>
+          <div>• 기준월: <strong>\${y}년 \${parseInt(mo)}월</strong></div>
+        </div>\`;
+      document.getElementById('save-sales-btn').disabled = false;
+    } catch(err) {
+      document.getElementById('sales-parse-progress').classList.add('hidden');
+      alert('파싱 오류: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function saveSalesData() {
+  if (!window._pendingSales) return;
+  const y  = document.getElementById('sales-upload-year').value;
+  const mo = document.getElementById('sales-upload-month').value;
+  const key = y + mo;
+  const db = getSalesDB();
+  db[key] = window._pendingSales;
+  saveSalesDB(db);
+  const badge = document.getElementById('sb-sales-count');
+  if (badge) badge.textContent = Object.keys(db).length;
+  closeSalesUploadModal();
+  window._salesSelectedKey = key;
+  renderSalesPage(document.getElementById('main-content'));
+}
+
+// ==================== 관리점 직원명단 모달 ====================
+function openBranchStaffModal() {
+  renderBranchStaffModal();
+  document.getElementById('branch-staff-modal').classList.add('open');
+}
+function closeBranchStaffModal() {
+  document.getElementById('branch-staff-modal').classList.remove('open');
+}
+
+function renderBranchStaffModal() {
+  const list = loadBranchStaff();
+  const container = document.getElementById('branch-staff-list');
+  if (!container) return;
+
+  // 영업리스트에서 심사자 목록 추출
+  const db = getSalesDB();
+  const allReviewers = new Set();
+  Object.values(db).forEach(snap => {
+    (snap.records || []).forEach(r => { if (r.reviewer) allReviewers.add(r.reviewer); });
+  });
+
+  // 등록된 심사자 집합
+  const assignedSet = new Set(list.flatMap(b => b.names || []));
+  const unassigned = [...allReviewers].filter(n => !assignedSet.has(n)).sort();
+
+  let html = '';
+  list.forEach((b, bi) => {
+    html += \`<div class="border border-gray-200 rounded-xl p-3 mb-3 bg-gray-50">
+      <div class="flex items-center gap-2 mb-2">
+        <input type="text" value="\${b.branch}" onchange="window._bsUpdateBranch(\${bi}, this.value)"
+          class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-bold flex-1 focus:outline-none focus:border-blue-400"
+          placeholder="관리점명 (예: 본점)">
+        <button onclick="window._bsRemoveBranch(\${bi})" class="px-2 py-1 text-xs bg-red-50 text-red-500 rounded-lg hover:bg-red-100 border border-red-100">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+      <div class="flex flex-wrap gap-1.5 mb-2">
+        \${(b.names||[]).map((n,ni)=>\`<span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
+          \${n}
+          <button onclick="window._bsRemoveName(\${bi},\${ni})" class="text-blue-400 hover:text-blue-700 ml-0.5"><i class="fas fa-times text-xs"></i></button>
+        </span>\`).join('')}
+      </div>
+      <div class="flex gap-1">
+        <select id="bs-add-select-\${bi}" class="border border-gray-200 rounded-lg px-2 py-1 text-sm flex-1 focus:outline-none focus:border-blue-400">
+          <option value="">-- 심사자 선택 --</option>
+          \${unassigned.map(n=>\`<option value="\${n}">\${n}</option>\`).join('')}
+          <option value="__manual__">직접 입력...</option>
+        </select>
+        <button onclick="window._bsAddName(\${bi})" class="px-3 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-semibold">추가</button>
+      </div>
+    </div>\`;
+  });
+
+  if (unassigned.length > 0) {
+    html += \`<div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-800">
+      <i class="fas fa-exclamation-triangle mr-1"></i>
+      <strong>미지정 심사자 \${unassigned.length}명:</strong> \${unassigned.join(', ')}
+    </div>\`;
+  }
+
+  container.innerHTML = html;
+}
+
+// 관리점 명단 조작 함수들 (전역)
+window._bsUpdateBranch = function(bi, val) {
+  const list = loadBranchStaff();
+  if (list[bi]) list[bi].branch = val;
+  saveBranchStaff(list);
+};
+window._bsRemoveBranch = function(bi) {
+  const list = loadBranchStaff();
+  list.splice(bi, 1);
+  saveBranchStaff(list);
+  renderBranchStaffModal();
+};
+window._bsRemoveName = function(bi, ni) {
+  const list = loadBranchStaff();
+  if (list[bi]) list[bi].names.splice(ni, 1);
+  saveBranchStaff(list);
+  renderBranchStaffModal();
+};
+window._bsAddName = function(bi) {
+  const sel = document.getElementById('bs-add-select-' + bi);
+  if (!sel) return;
+  let name = sel.value;
+  if (!name) return;
+  if (name === '__manual__') {
+    name = prompt('심사자 이름을 입력하세요:');
+    if (!name || !name.trim()) return;
+    name = name.trim();
+  }
+  const list = loadBranchStaff();
+  if (!list[bi]) return;
+  // 중복 방지
+  if ((list[bi].names || []).includes(name)) { alert('이미 추가된 심사자입니다.'); return; }
+  // 다른 관리점에서 제거
+  list.forEach((b, i) => { if (i !== bi) b.names = (b.names||[]).filter(n=>n!==name); });
+  if (!list[bi].names) list[bi].names = [];
+  list[bi].names.push(name);
+  saveBranchStaff(list);
+  renderBranchStaffModal();
+};
+window._bsAddBranch = function() {
+  const input = document.getElementById('bs-new-branch-input');
+  const name = input ? input.value.trim() : '';
+  if (!name) { alert('관리점명을 입력하세요'); return; }
+  const list = loadBranchStaff();
+  if (list.some(b=>b.branch===name)) { alert('이미 존재하는 관리점명입니다'); return; }
+  list.push({ branch: name, names: [] });
+  saveBranchStaff(list);
+  if (input) input.value = '';
+  renderBranchStaffModal();
+};
+window._bsSaveAll = function() {
+  closeBranchStaffModal();
+  // 현재 페이지가 sales면 새로고침
+  if (currentPage === 'sales') renderSalesPage(document.getElementById('main-content'));
+};
 
 // ==================== 업로드 모달 ====================
 function openUploadModal() {
