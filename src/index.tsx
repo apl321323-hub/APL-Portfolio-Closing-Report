@@ -1642,6 +1642,10 @@ function processFile(file) {
       const headers = rows[0];
       // 컬럼 인덱스 찾기
       const hIdx = (name) => headers.indexOf(name);
+      // ── DEBUG: 헤더 전체 출력 (계약일자 컬럼명 확인용) ──
+      console.log('[DEBUG headers]', JSON.stringify(headers));
+      console.log('[DEBUG colDate raw] 계약일자 idx=', hIdx('계약일자'), '/ 계약일 idx=', hIdx('계약일'));
+      // ── DEBUG END ──
       const colP   = hIdx('현재상품');  // H
       const colB   = hIdx('잔액');      // L
       const colR   = hIdx('정상이율'); // O
@@ -1707,6 +1711,12 @@ function processFile(file) {
               if (digits.length >= 6) cdYm = digits.slice(0,4) + digits.slice(4,6);
             }
           }
+        }
+        // ── DEBUG: 첫 5건 cdYm 출력 ──
+        if (records.length < 5) {
+          console.log('[DEBUG cdYm] row', records.length,
+            '| raw=', colDate >= 0 ? row[colDate] : 'NO_COL',
+            '| cdYm=', cdYm);
         }
         records.push({
           p:   pName,
