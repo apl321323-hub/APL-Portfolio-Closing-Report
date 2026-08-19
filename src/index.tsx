@@ -706,62 +706,69 @@ async function _idbSet(db) {
  * Supabase에서 전체 months 딕셔너리 반환
  * 실패 시 IDB 캐시 폴백
  */
+// ── 인메모리 캐시 (Supabase 왕복 최소화) ──
+let _dbCache = null;
+let _dbCacheLoaded = false;
+
+/**
+ * getMonthsDB : 최초 1회만 Supabase 조회 → 이후 메모리 캐시 반환
+ */
 async function getMonthsDB() {
+  if (_dbCacheLoaded) return _dbCache;
   try {
     const res = await fetch('/api/db/months');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data && typeof data === 'object' && !data.error) {
-      await _idbSet(data); // 캐시 갱신
-      return data;
+      _dbCache = data;
+      _dbCacheLoaded = true;
+      await _idbSet(data);
+      return _dbCache;
     }
     throw new Error(data.error || '응답 오류');
   } catch(e) {
-    console.warn('[getMonthsDB] Supabase 실패, IDB 캐시 폴백:', e);
+    console.warn('[getMonthsDB] Supabase 실패, IDB 폴백:', e);
     const cached = await _idbGet();
-    if (Object.keys(cached).length > 0) return cached;
-    // localStorage 최후 폴백
-    try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch(_){ return {}; }
+    _dbCache = Object.keys(cached).length > 0 ? cached
+      : (() => { try { return JSON.parse(localStorage.getItem(DB_KEY)||'{}'); } catch(_){return {};} })();
+    _dbCacheLoaded = true;
+    return _dbCache;
   }
 }
 
+function invalidateDBCache() { _dbCache = null; _dbCacheLoaded = false; }
+
 /**
- * Supabase에 전체 months 딕셔너리 저장
- * slim화(빈 문자열·null 제거) 포함
+ * saveMonthsDB : 변경된 키만 Supabase upsert
+ * @param {object} db  전체 db 딕셔너리
+ * @param {string|string[]|null} changedKeys  변경 키 (null=전체)
  */
-async function saveMonthsDB(db) {
-  // slim화: 빈 문자열·null 필드 제거
-  const slim = {};
-  for (const [k, v] of Object.entries(db)) {
-    slim[k] = {
-      ...v,
-      records: (v.records || []).map(r => {
-        const o = {};
-        for (const [fk, fv] of Object.entries(r)) {
-          if (fv !== '' && fv !== null) o[fk] = fv;
-        }
-        return o;
-      })
-    };
+async function saveMonthsDB(db, changedKeys = null) {
+  function slimOne(v) {
+    return { ...v, records: (v.records||[]).map(r => {
+      const o = {};
+      for (const [fk,fv] of Object.entries(r)) { if (fv!==''&&fv!==null) o[fk]=fv; }
+      return o;
+    })};
   }
-  // IDB 캐시 즉시 갱신 (오프라인/빠른 응답용)
-  await _idbSet(slim);
-  // Supabase 저장 (백그라운드 - 실패해도 캐시는 유지)
+  _dbCache = db;
+  _dbCacheLoaded = true;
+  const keys = changedKeys ? (Array.isArray(changedKeys)?changedKeys:[changedKeys]) : Object.keys(db);
+  const slim = {};
+  for (const k of keys) { if (db[k]) slim[k] = slimOne(db[k]); }
+  const allSlim = {};
+  for (const [k,v] of Object.entries(db)) allSlim[k] = slimOne(v);
+  await _idbSet(allSlim);
+  if (!Object.keys(slim).length) return;
   try {
     const res = await fetch('/api/db/months', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(slim)
     });
-    if (!res.ok) {
-      const err = await res.text();
-      console.error('[saveMonthsDB] Supabase 저장 실패:', err);
-    } else {
-      console.log('[saveMonthsDB] Supabase 저장 완료 (' + Object.keys(slim).length + '개월)');
-    }
-  } catch(e) {
-    console.error('[saveMonthsDB] Supabase 네트워크 오류:', e);
-  }
+    if (!res.ok) console.error('[saveMonthsDB] 실패:', await res.text());
+    else console.log('[saveMonthsDB] 저장:', keys.join(', '));
+  } catch(e) { console.error('[saveMonthsDB] 오류:', e); }
 }
 
 /**
@@ -858,7 +865,7 @@ async function init() {
             const key = loanData.base_date.replace(/-/g,'').slice(0,6);
             const db = await getMonthsDB();
             db[key] = loanData;
-            await saveMonthsDB(db);
+            await saveMonthsDB(db, key);
             await loadMonthData(key);
             console.log('[결산자료] loan_data.json 자동 로드 완료 (' + key + ', ' + (loanData.records?.length||0) + '건)');
           }
@@ -1888,9 +1895,10 @@ async function deleteMonth(yyyymm) {
     const delRes = await fetch('/api/db/months/' + yyyymm, { method: 'DELETE' });
     if (!delRes.ok) console.error('[deleteMonth] Supabase 삭제 실패:', await delRes.text());
   } catch(e) { console.error('[deleteMonth] 네트워크 오류:', e); }
-  // IDB 캐시에서도 삭제
+  // 메모리 캐시 + IDB 캐시에서도 삭제
   const db = await getMonthsDB();
   delete db[yyyymm];
+  _dbCache = db;                  // 캐시 즉시 반영
   await _idbSet(db);
   await refreshSidebarMonths();
   await renderUploadPage(document.getElementById('main-content'));
@@ -2110,7 +2118,7 @@ async function saveUploadedData() {
 
   const db = await getMonthsDB();
   db[key] = pendingParsed;
-  await saveMonthsDB(db);
+  await saveMonthsDB(db, key);   // 변경 키만 전송
 
   LOAN = pendingParsed;
   document.getElementById('hdr-basedate').textContent = LOAN.base_date;
