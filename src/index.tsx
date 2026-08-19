@@ -4365,10 +4365,10 @@ async function renderVintage(el) {
     });
   });
 
-  // 곡선이 2점 이상인 코호트만 표시 (최근 12개 코호트)
+  // 곡선이 2점 이상인 코호트만 표시 (전체 코호트)
   const curveKeys = Object.keys(cohortCurves)
     .filter(k => cohortCurves[k].length >= 2)
-    .sort().slice(-12);
+    .sort();
   const hasCurves = curveKeys.length > 0;
 
   // ─────────────────────────────────────────────────────────────
