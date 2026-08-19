@@ -664,8 +664,8 @@ async function augmentTrendFromStorage() {
   if (!TREND) return;
   const db = await getMonthsDB();
   const keys = Object.keys(db).sort(); // 오름차순
-  console.log('[augment] IDB keys:', keys, '| TREND.months before:', JSON.stringify(TREND.months));
-  if (keys.length === 0) { console.log('[augment] keys 없음 — skip'); return; }
+
+  if (keys.length === 0) return;
 
   // ── 담보/신용 상품 목록 (CATEGORIES + GROUPS 기준 — 잔고구성비와 동일) ──
   const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
@@ -834,9 +834,9 @@ async function augmentTrendFromStorage() {
 
   // ── 보완 후 TREND 재정렬 ──────────────────────────────────────────────────
   function monthLabelToNum(m) {
-    const mm = String(m).match(new RegExp('(\\d+)\\.(\\d+)'));
-    if (!mm) return 0;
-    return parseInt(mm[1]) * 100 + parseInt(mm[2]);
+    const p = String(m).split('.');
+    if (p.length < 2) return 0;
+    return parseInt(p[0]) * 100 + parseInt(p[1]);
   }
   const order = TREND.months
     .map((m, i) => ({ m, i }))
@@ -857,7 +857,7 @@ async function augmentTrendFromStorage() {
       if (tp.overdue)   tp.overdue   = idx.map(i => tp.overdue[i]);
     }
   }
-  console.log('[augment] TREND.months after sort:', JSON.stringify(TREND.months));
+
 }
 
 async function loadMonthData(yyyymm) {
@@ -1901,9 +1901,9 @@ function ymToTrendLabel(yyyymm) {
 function sortTrendMonths() {
   if (!TREND || !TREND.months || TREND.months.length === 0) return;
   function lbl2num(m) {
-    const mm = String(m).match(new RegExp('(\\d+)\\.(\\d+)'));
-    if (!mm) return 0;
-    return parseInt(mm[1]) * 100 + parseInt(mm[2]);
+    const p = String(m).split('.');
+    if (p.length < 2) return 0;
+    return parseInt(p[0]) * 100 + parseInt(p[1]);
   }
   const order = TREND.months.map((m, i) => ({ m, i }))
     .sort((a, b) => lbl2num(a.m) - lbl2num(b.m));
@@ -1921,7 +1921,7 @@ function sortTrendMonths() {
       if (tp.overdue)   tp.overdue   = idx.map(i => tp.overdue[i]);
     }
   }
-  console.log('[sortTrendMonths] 정렬 완료:', JSON.stringify(TREND.months));
+
 }
 
 // ==================== 페이지: 종합 개요 ====================
@@ -2034,7 +2034,7 @@ function renderOverview(el) {
     // setTimeout 진입 시점에 TREND.months가 오염될 수 있으므로 재정렬 후 스냅샷 캡처
     sortTrendMonths();
     const _trendMonths = TREND ? TREND.months.slice() : [];
-    console.log('[renderOverview setTimeout] _trendMonths:', JSON.stringify(_trendMonths));
+
 
     mkPie('ov-pie',catData.map(c=>c.name),catData.map(c=>c.balance),catData.map(c=>c.color));
     const pMap=aggregateByProduct();
