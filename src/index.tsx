@@ -4746,7 +4746,7 @@ function onVintageFilter(value) {
   const el = document.getElementById('main-content');
   if (el) renderVintage(el);
 }
-(window as any).onVintageFilter = onVintageFilter;
+window.onVintageFilter = onVintageFilter;
 
 async function renderRealestate(el) {
   const db = await getMonthsDB();
