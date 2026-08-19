@@ -197,6 +197,10 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
         <i class="sb-icon fas fa-exchange-alt"></i>
         <span class="sb-label">연체 변동 분석</span>
       </div>
+      <div class="sb-item" data-page="vintage" onclick="goPage('vintage')">
+        <i class="sb-icon fas fa-chart-bar"></i>
+        <span class="sb-label">연체 빈티지</span>
+      </div>
       <div class="sb-item" data-page="realestate" onclick="goPage('realestate')">
         <i class="sb-icon fas fa-building"></i>
         <span class="sb-label">부동산 현황</span>
@@ -891,7 +895,7 @@ async function goPage(page) {
 async function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
-  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate') {
+  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate' && currentPage !== 'vintage') {
     el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
       <i class="fas fa-cloud-upload-alt text-5xl text-blue-200"></i>
       <p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>
@@ -909,6 +913,7 @@ async function renderPage() {
     case 'agent':    renderAgent(el);    break;
     case 'overdue':        await renderOverdue(el);        break;
     case 'overdue-change': await renderOverdueChange(el);  break;
+    case 'vintage':        await renderVintage(el);         break;
     case 'realestate': await renderRealestate(el); break;
     case 'trend':    renderTrend(el);    break;
     case 'upload':    await renderUploadPage(el);    break;
@@ -1656,7 +1661,9 @@ function processFile(file) {
       const colCla = hIdx('담보지역'); // 담보지역
       const colClt = hIdx('담보종류'); // 담보종류
       const colGy  = hIdx('회생여부'); // 회생여부
-      const colDate= hIdx('계약일자'); // 계약일자
+      const colDate = hIdx('계약일자'); // 계약일자 (D열) → 취급월(YYYYMM) 추출용
+      const colExp  = hIdx('만기일자'); // 만기일자 (X열)
+      const colUsed = hIdx('사용일수'); // 사용일수 (CY열)
 
       if (colP<0||colB<0) throw new Error('현재상품 또는 잔액 컬럼을 찾을 수 없습니다');
 
@@ -1678,6 +1685,22 @@ function processFile(file) {
         const loanAmt     = isCollateral ? (loanK + chVal)          : 0;
         // 감정가   = 최종감정가 × 소유비율합계 / 100
         const appraised   = isCollateral ? (cfVal * cgVal / 100)    : 0;
+        // 계약일자 → 취급월 YYYYMM 추출 (엑셀 날짜 직렬/문자열 양방향 처리)
+        let cdYm = '';
+        if (colDate >= 0 && row[colDate]) {
+          const raw = row[colDate];
+          if (typeof raw === 'number') {
+            // 엑셀 날짜 직렬 → JS Date
+            const jsDate = new Date(Math.round((raw - 25569) * 86400 * 1000));
+            const yy = jsDate.getUTCFullYear();
+            const mm = String(jsDate.getUTCMonth()+1).padStart(2,'0');
+            cdYm = String(yy) + mm;   // e.g. "202506"
+          } else {
+            // 문자열 형태: "2025-06-15", "20250615", "2025.06.15" 등
+            const s = String(raw).replace(/[.\-\/]/g,'');
+            if (s.length >= 6) cdYm = s.slice(0,4) + s.slice(4,6);
+          }
+        }
         records.push({
           p:   pName,
           b:   b,
@@ -1693,6 +1716,7 @@ function processFile(file) {
           cla: String(row[colCla]|| '').trim(),
           clt: String(row[colClt]|| '').trim(),
           gy:  String(row[colGy] || '').trim(),
+          cd:  cdYm,  // 취급월 YYYYMM (계약일자 D열 → 빈티지 분석용)
         });
       }
 
@@ -4239,6 +4263,171 @@ function calcRealestateStats(records, loanTypeName) {
     : (ltvBalSum  > 0 ? (ltvWSum / ltvBalSum).toFixed(1) : null);
   const avgRate = rBSum > 0 ? (rWSum / rBSum).toFixed(2) : null;
   return { summary, byRegion, byColtype, byRC, avgLtv, avgRate };
+}
+
+// ==================== 페이지: 연체 빈티지 ====================
+async function renderVintage(el) {
+  const db = await getMonthsDB();
+  const allKeys = Object.keys(db).sort(); // 오래된 순
+
+  // ── 현재 선택된 월(LOAN) 기준 단면 분석용 레코드
+  const curRecs  = LOAN ? (LOAN.records || []) : [];
+  const hasCd    = curRecs.some(r => r.cd && r.cd.length === 6);
+
+  // ── 다월 IDB용: 각 월별 연체율 시계열
+  const trendEntries = allKeys
+    .map(k => ({ key: k, data: db[k] }))
+    .filter(e => e.data && e.data.records && e.data.base_date);
+
+  // ── ① 취급월별 현재 연체율 집계 (단일 월 결산자료 기준)
+  // cd 필드 기준 코호트 → 각 코호트의 잔고/연체잔고
+  const vintageMap = {}; // { YYYYMM: { bal, od10, od30, cnt, odCnt } }
+  if (hasCd) {
+    curRecs.forEach(r => {
+      const ym = r.cd || '__없음__';
+      if (!vintageMap[ym]) vintageMap[ym] = { bal: 0, od10: 0, od30: 0, cnt: 0, odCnt: 0 };
+      const v = vintageMap[ym];
+      v.bal  += r.b || 0;
+      v.cnt  += 1;
+      if ((r.d||0) >= 10) { v.od10 += r.b||0; v.odCnt++; }
+      if ((r.d||0) >= 30)   v.od30 += r.b||0;
+    });
+  }
+  const vintageRows = Object.entries(vintageMap)
+    .filter(([k]) => k !== '__없음__' && k.length === 6)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([ym, v]) => ({
+      label: ym.slice(0,4) + '.' + ym.slice(4,6) + '월',
+      ym,
+      ...v,
+      rate10: v.bal > 0 ? +(v.od10 / v.bal * 100).toFixed(2) : 0,
+      rate30: v.bal > 0 ? +(v.od30 / v.bal * 100).toFixed(2) : 0,
+    }));
+
+  // ── ② 다월 연체율 추이 (IDB 전체 월 × 10일·30일 연체율)
+  const trendRows = trendEntries.map(e => {
+    const recs = e.data.records || [];
+    const totBal = recs.reduce((s,r) => s + (r.b||0), 0);
+    const od10   = recs.filter(r => (r.d||0) >= 10).reduce((s,r) => s + (r.b||0), 0);
+    const od30   = recs.filter(r => (r.d||0) >= 30).reduce((s,r) => s + (r.b||0), 0);
+    const label  = e.data.base_date.slice(0,7).replace('-','년 ') + '월';
+    return {
+      key: e.key, label,
+      rate10: totBal > 0 ? +(od10/totBal*100).toFixed(2) : 0,
+      rate30: totBal > 0 ? +(od30/totBal*100).toFixed(2) : 0,
+    };
+  });
+
+  const baseDateLabel = LOAN ? LOAN.base_date : '결산자료 없음';
+  const noDataMsg = !hasCd
+    ? '<div class="p-4 text-sm text-amber-700 bg-amber-50 rounded-xl border border-amber-200"><i class="fas fa-info-circle mr-2"></i>현재 결산자료에 <strong>계약일자(cd)</strong> 필드가 없습니다. 결산자료를 재업로드하면 빈티지 분석이 활성화됩니다.</div>'
+    : '';
+
+  el.innerHTML = \`
+<div class="space-y-5">
+  <!-- 헤더 -->
+  <div class="flex items-center justify-between flex-wrap gap-2">
+    <div>
+      <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>연체 빈티지 분석</h2>
+      <p class="text-sm text-gray-500 mt-0.5">취급월(코호트)별 현재 시점 연체율 · 다월 연체율 추이</p>
+    </div>
+    <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">기준: \${baseDateLabel}</span>
+  </div>
+
+  \${noDataMsg}
+
+  <!-- ① 취급월별 현재 연체율 바 차트 -->
+  <div class="card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-indigo-400"></i>① 취급월별 현재 연체율 <span class="text-xs text-gray-400 font-normal ml-1">(현재 결산자료 단면)</span></h3>
+      <div class="flex gap-2 text-xs">
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm inline-block" style="background:#6366f1"></span>10일↑ 연체율</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm inline-block" style="background:#dc2626"></span>30일↑ 연체율</span>
+      </div>
+    </div>
+    \${vintageRows.length === 0
+      ? '<div class="flex items-center justify-center h-32 text-gray-400 text-sm"><i class="fas fa-info-circle mr-2"></i>' + (hasCd ? '취급월 데이터가 없습니다' : '결산자료 재업로드 후 활성화됩니다') + '</div>'
+      : '<div class="chart-wrap-lg"><canvas id="vt-bar"></canvas></div>'
+    }
+  </div>
+
+  <!-- ② 다월 연체율 추이 라인 차트 -->
+  <div class="card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-line mr-2 text-blue-400"></i>② 포트폴리오 연체율 추이 <span class="text-xs text-gray-400 font-normal ml-1">(IDB 저장 결산자료 전체 월)</span></h3>
+      <span class="text-xs text-gray-400">\${trendRows.length}개월치 데이터</span>
+    </div>
+    \${trendRows.length < 2
+      ? '<div class="flex flex-col items-center justify-center h-32 text-gray-400 text-sm gap-1"><i class="fas fa-database text-2xl text-gray-200"></i><p>결산자료 2개월 이상 업로드 시 추이 확인 가능합니다</p></div>'
+      : '<div class="chart-wrap-lg"><canvas id="vt-trend"></canvas></div>'
+    }
+  </div>
+
+  <!-- ③ 취급월별 연체 상세 테이블 -->
+  \${vintageRows.length > 0 ? \`
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-indigo-400"></i>취급월별 연체 상세</h3>
+    <div class="overflow-auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>취급월</th>
+          <th class="text-right">건수</th>
+          <th class="text-right">잔고</th>
+          <th class="text-right">연체건수</th>
+          <th class="text-right">10일↑ 연체잔고</th>
+          <th class="text-right">10일↑ 연체율</th>
+          <th class="text-right">30일↑ 연체잔고</th>
+          <th class="text-right">30일↑ 연체율</th>
+        </tr></thead>
+        <tbody>
+          \${vintageRows.map(v => \`<tr>
+            <td class="font-medium">\${v.label}</td>
+            <td class="text-right text-gray-600">\${fmtN(v.cnt)}</td>
+            <td class="text-right">\${fmtAmt(v.bal)}</td>
+            <td class="text-right \${v.odCnt>0?'text-orange-600':''}">\${fmtN(v.odCnt)}</td>
+            <td class="text-right \${v.od10>0?'text-orange-500':''}">\${fmtAmt(v.od10)}</td>
+            <td class="text-right font-bold \${v.rate10>=10?'text-red-600':v.rate10>=5?'text-orange-500':''}">\${v.rate10.toFixed(2)}%</td>
+            <td class="text-right \${v.od30>0?'text-red-400':''}">\${fmtAmt(v.od30)}</td>
+            <td class="text-right font-bold \${v.rate30>=10?'text-red-700':v.rate30>=5?'text-red-500':''}">\${v.rate30.toFixed(2)}%</td>
+          </tr>\`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  \` : ''}
+</div>\`;
+
+  // ── 차트 렌더링
+  setTimeout(() => {
+    // ① 바 차트: 취급월별 연체율
+    if (vintageRows.length > 0) {
+      mkBar('vt-bar',
+        vintageRows.map(v => v.label),
+        [
+          { label: '10일↑ 연체율(%)', data: vintageRows.map(v => v.rate10),
+            backgroundColor: '#6366f180', borderColor: '#6366f1', borderWidth: 1.5 },
+          { label: '30일↑ 연체율(%)', data: vintageRows.map(v => v.rate30),
+            backgroundColor: '#dc262680', borderColor: '#dc2626', borderWidth: 1.5 },
+        ],
+        { extra: { scales: {
+          y: { ticks: { callback: v => v + '%' }, title: { display: true, text: '연체율(%)' } }
+        }}}
+      );
+    }
+    // ② 라인 차트: 다월 포트폴리오 연체율 추이
+    if (trendRows.length >= 2) {
+      mkLine('vt-trend',
+        trendRows.map(r => r.label),
+        [
+          { label: '10일↑ 연체율(%)', data: trendRows.map(r => r.rate10),
+            borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.08)', fill: true },
+          { label: '30일↑ 연체율(%)', data: trendRows.map(r => r.rate30),
+            borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.08)', fill: true, borderDash: [4,2] },
+        ],
+        { pct: true }
+      );
+    }
+  }, 50);
 }
 
 async function renderRealestate(el) {
