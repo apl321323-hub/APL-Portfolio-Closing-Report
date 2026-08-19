@@ -386,6 +386,9 @@ let TREND = null;      // data.json 월별 추이
 let currentPage = 'overview';
 let pendingParsed = null;       // 결산자료 파싱 대기
 let pendingContract = null;     // 계약리스트 파싱 대기
+// ── 빈티지 필터 상태
+let vintageFilterType = 'all';   // 'all' | 'group' | 'category'
+let vintageFilterId   = '';      // 선택된 그룹ID or 카테고리ID
 // ── 결산자료 스토리지
 const DB_KEY = 'apl_months_v1';
 // ── 계약리스트 스토리지
@@ -4294,16 +4297,67 @@ function calcRealestateStats(records, loanTypeName) {
 }
 
 // ==================== 페이지: 연체 빈티지 ====================
+// ── 빈티지 필터: records 배열을 현재 필터 설정으로 필터링
+function vintageFilterRecs(recs) {
+  if (vintageFilterType === 'all') return recs;
+  const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
+  const grpsNow = (GROUPS     && GROUPS.length     > 0) ? GROUPS     : DEFAULT_GROUPS;
+  if (vintageFilterType === 'category') {
+    const cat = catsNow.find(c => c.id === vintageFilterId);
+    if (!cat) return recs;
+    const prods = new Set(cat.products || []);
+    return recs.filter(r => prods.has(r.p));
+  }
+  if (vintageFilterType === 'group') {
+    const grp = grpsNow.find(g => g.id === vintageFilterId);
+    if (!grp) return recs;
+    const catIds = new Set(grp.categoryIds || []);
+    const prods  = new Set(
+      catsNow.filter(c => catIds.has(c.id)).flatMap(c => c.products || [])
+    );
+    return recs.filter(r => prods.has(r.p));
+  }
+  return recs;
+}
+
 async function renderVintage(el) {
   const db          = await getMonthsDB();
   const allKeys     = Object.keys(db).sort();  // YYYYMM 오래된 순
 
   // ── 현재 선택 월 정보
-  const curRecs     = LOAN ? (LOAN.records || []) : [];
+  const curRecsRaw  = LOAN ? (LOAN.records || []) : [];
   const baseDate    = LOAN ? LOAN.base_date : null;
-  // base_date "2026-06-30" → baseYm "202606"
   const baseYm      = baseDate ? baseDate.replace(/-/g,'').slice(0,6) : null;
+
+  // ── 필터 적용
+  const curRecs     = vintageFilterRecs(curRecsRaw);
   const hasCd       = curRecs.some(r => r.cd && r.cd.length === 6);
+
+  // ── 필터 셀렉트 옵션 생성
+  const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
+  const grpsNow = (GROUPS     && GROUPS.length     > 0) ? GROUPS     : DEFAULT_GROUPS;
+  const grpOptions  = grpsNow.map(g =>
+    '<option value="group__' + g.id + '"' + (vintageFilterType==='group'&&vintageFilterId===g.id?' selected':'') + '>' + g.name + '</option>'
+  ).join('');
+  const catOptions  = catsNow.map(c =>
+    '<option value="category__' + c.id + '"' + (vintageFilterType==='category'&&vintageFilterId===c.id?' selected':'') + '>' + c.name + '</option>'
+  ).join('');
+  const filterSel = '<select id="vt-filter-sel" onchange="onVintageFilter(this.value)" '
+    + 'class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer">'
+    + '<option value="all"' + (vintageFilterType==='all'?' selected':'') + '>전체</option>'
+    + '<optgroup label="── 상품 그룹">' + grpOptions + '</optgroup>'
+    + '<optgroup label="── 상품 카테고리">' + catOptions + '</optgroup>'
+    + '</select>';
+
+  // ── 필터 레이블 (현재 선택 표시용)
+  let filterLabel = '전체';
+  if (vintageFilterType === 'group') {
+    const g = grpsNow.find(x => x.id === vintageFilterId);
+    if (g) filterLabel = '그룹: ' + g.name;
+  } else if (vintageFilterType === 'category') {
+    const c = catsNow.find(x => x.id === vintageFilterId);
+    if (c) filterLabel = '카테고리: ' + c.name;
+  }
 
   // ─────────────────────────────────────────────────────────────
   // ① 취급월별 현재 연체율 집계  (단일 월 결산자료 단면)
@@ -4341,7 +4395,7 @@ async function renderVintage(el) {
 
     // 이 스냅샷에서 cd 필드가 있는 건들만 코호트별로 집계
     const snapMap = {};
-    snap.records.forEach(r => {
+    vintageFilterRecs(snap.records).forEach(r => {
       if (!r.cd || r.cd.length !== 6) return;
       if (!snapMap[r.cd]) snapMap[r.cd] = { bal:0, od10:0, od30:0 };
       const v = snapMap[r.cd];
@@ -4399,12 +4453,12 @@ async function renderVintage(el) {
   }
   function hmTextColor(rate) { return rate >= 5 ? '#fff' : '#374151'; }
 
-  // 다월 추이 (포트폴리오 전체)
+  // 다월 추이 (필터 적용)
   const trendRows = allKeys
     .map(k => {
       const e = db[k];
       if (!e || !e.records) return null;
-      const recs = e.records;
+      const recs = vintageFilterRecs(e.records);
       const tot  = recs.reduce((s,r)=>s+(r.b||0),0);
       const od10 = recs.filter(r=>(r.d||0)>=10).reduce((s,r)=>s+(r.b||0),0);
       const od30 = recs.filter(r=>(r.d||0)>=30).reduce((s,r)=>s+(r.b||0),0);
@@ -4432,9 +4486,12 @@ async function renderVintage(el) {
       <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>연체 빈티지 분석</h2>
       <p class="text-sm text-gray-500 mt-0.5">취급월(코호트) 기준 연체율 — ① 단면 ② 누적곡선 ③ 히트맵</p>
     </div>
-    <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
-      기준: \${baseDate || '결산자료 없음'}\${baseYm ? ' (' + allKeys.length + '개월 적재)' : ''}
-    </span>
+    <div class="flex items-center gap-2 flex-wrap">
+      \${filterSel}
+      <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
+        기준: \${baseDate || '결산자료 없음'}\${baseYm ? ' (' + allKeys.length + '개월 적재)' : ''}
+      </span>
+    </div>
   </div>
 
   \${noCdBanner}
@@ -4672,6 +4729,24 @@ async function renderVintage(el) {
     }
   }, 60);
 }
+
+// ── 빈티지 필터 변경 핸들러 (select onchange 호출)
+function onVintageFilter(value) {
+  if (value === 'all') {
+    vintageFilterType = 'all';
+    vintageFilterId   = '';
+  } else {
+    const sep  = value.indexOf('__');
+    if (sep === -1) { vintageFilterType = 'all'; vintageFilterId = ''; }
+    else {
+      vintageFilterType = value.slice(0, sep);   // 'group' | 'category'
+      vintageFilterId   = value.slice(sep + 2);   // id 값
+    }
+  }
+  const el = document.getElementById('main-content');
+  if (el) renderVintage(el);
+}
+(window as any).onVintageFilter = onVintageFilter;
 
 async function renderRealestate(el) {
   const db = await getMonthsDB();
