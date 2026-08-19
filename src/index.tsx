@@ -72,6 +72,7 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
 .badge-purple{background:#ede9fe;color:#7c3aed;}
 .chart-wrap{position:relative;height:220px;}
 .chart-wrap-lg{position:relative;height:280px;}
+.chart-wrap-xl{position:relative;height:380px;}
 .chart-wrap-sm{position:relative;height:200px;}
 .progress-bar{height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;}
 .progress-fill{height:100%;border-radius:4px;transition:width .6s ease;}
@@ -4454,6 +4455,9 @@ async function renderVintage(el) {
     \${!hasCd ? '<p class="text-xs text-center text-amber-500 mt-2"><i class="fas fa-info-circle mr-1"></i>결산자료 재업로드 후 데이터 표시</p>' : ''}
   </div>
 
+  <!-- ②③ 2열 그리드: 코호트 곡선(좌) + 히트맵(우) -->
+  <div class="grid grid-cols-2 gap-4 items-start">
+
   <!-- ② 코호트별 누적연체 곡선 -->
   <div class="card p-5">
     <div class="flex items-center justify-between mb-1">
@@ -4464,7 +4468,7 @@ async function renderVintage(el) {
       <span class="text-xs text-gray-400">\${curveKeys.length}개 코호트</span>
     </div>
     \${hasCurves
-      ? '<div class="chart-wrap-lg mt-3"><canvas id="vt-curve"></canvas></div>'
+      ? '<div class="chart-wrap-xl mt-3"><canvas id="vt-curve"></canvas></div>'
       : '<div class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2 mt-2"><i class="fas fa-layer-group text-3xl"></i><p class="text-sm text-gray-400">다월 결산자료 적재 후 활성화됩니다</p><p class="text-xs text-gray-400">결산자료를 여러 월 업로드하세요</p></div>'
     }
   </div>
@@ -4509,6 +4513,8 @@ async function renderVintage(el) {
       ).join('')}
     </div>
     \` : '<div class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2"><i class="fas fa-th text-3xl"></i><p class="text-sm text-gray-400">다월 결산자료 적재 후 활성화됩니다</p></div>'}
+  </div>
+  <!-- ②③ 그리드 끝 -->
   </div>
 
   <!-- ④ 다월 포트폴리오 연체율 추이 -->
