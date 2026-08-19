@@ -2028,6 +2028,10 @@ function renderOverview(el) {
 </div>\`;
 
   setTimeout(()=>{
+    // setTimeout 진입 시점에 TREND.months가 오염될 수 있으므로 재정렬 후 스냅샷 캡처
+    sortTrendMonths();
+    const _trendMonths = TREND ? TREND.months.slice() : [];
+
     mkPie('ov-pie',catData.map(c=>c.name),catData.map(c=>c.balance),catData.map(c=>c.color));
     const pMap=aggregateByProduct();
     const pArr=Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).slice(0,15);
@@ -2035,15 +2039,15 @@ function renderOverview(el) {
     if(TREND){
 
       // 기존 연체율 추이
-      mkLine('ov-trend',TREND.months,[
+      mkLine('ov-trend',_trendMonths,[
         {label:'융자잔고(억)',data:TREND.total.balance.map(b=>b.amount),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true},
         {label:'30일연체율(%)',data:TREND.total.overdue.map(o=>o.rate_30),borderColor:'#dc2626',yAxisID:'y1'}
       ],{y1:true});
 
       // ── 신용/담보 융자잔고 추이 (__creditByMonth 있는 월만 표시) ─────────────
       {
-        // __creditByMonth에 값이 있는 월만 — 연도 무관하게 정렬된 순서대로
-        const months26 = TREND.months.filter(mn =>
+        // __creditByMonth에 값이 있는 월만 — 정렬된 스냅샷(_trendMonths) 기준
+        const months26 = _trendMonths.filter(mn =>
           TREND.__creditByMonth && TREND.__creditByMonth[mn] !== undefined
         );
 
@@ -2061,7 +2065,7 @@ function renderOverview(el) {
         }
 
         // ── 신규대출: __newByCatMonth 있는 월만 ──────────────────────────────
-        const nlMonths = TREND.months.filter(mn =>
+        const nlMonths = _trendMonths.filter(mn =>
           TREND.__newByCatMonth && TREND.__newByCatMonth[mn] !== undefined
         );
 
@@ -5400,11 +5404,13 @@ function renderTrend(el) {
   </div>
 </div>\`;
   setTimeout(()=>{
-    mkLine('tr-bal',TREND.months,[
+    sortTrendMonths();
+    const _tm = TREND.months.slice(); // 정렬 직후 스냅샷
+    mkLine('tr-bal',_tm,[
       {label:'융자잔고(억)',data:tData.balance.map(b=>b.amount),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true},
       {label:'신규대출(억)',data:tData.new_loans.map(n=>n.amount),borderColor:'#059669',borderDash:[5,3]}
     ],{});
-    mkLine('tr-od',TREND.months,[
+    mkLine('tr-od',_tm,[
       {label:'10일연체율',data:tData.overdue.map(o=>o.rate_10),borderColor:'#f97316',borderDash:[4,2]},
       {label:'30일연체율',data:tData.overdue.map(o=>o.rate_30),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.08)',fill:true}
     ],{pct:true});
