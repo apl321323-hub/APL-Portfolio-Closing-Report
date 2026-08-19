@@ -4604,16 +4604,18 @@ async function renderVintage(el) {
       const chartEl = document.getElementById('vt-curve');
       if (chartEl) {
         if (charts['vt-curve']) { charts['vt-curve'].destroy(); }
+        // maxE에 따라 눈금 간격 자동 조정: 12M이하→1, 24M이하→2, 36M이하→3
+        const step = maxE <= 12 ? 1 : maxE <= 24 ? 2 : 3;
         charts['vt-curve'] = new Chart(chartEl, {
           type: 'line',
           data: { datasets },
           options: {
-            responsive: true, maintainAspectRatio: true,
+            responsive: true, maintainAspectRatio: false,
             parsing: false,
             plugins: { legend:{ position:'bottom', labels:{boxWidth:12, font:{size:11}} } },
             scales: {
               x: { type:'linear', title:{display:true,text:'경과월수(M)'},
-                   min:0, max:maxE, ticks:{stepSize:1, callback:v=>v+'M'} },
+                   min:0, max:maxE, ticks:{stepSize:step, callback:v=>v+'M'} },
               y: { title:{display:true,text:'10일↑ 연체율(%)'},
                    ticks:{callback:v=>v+'%'} }
             }
