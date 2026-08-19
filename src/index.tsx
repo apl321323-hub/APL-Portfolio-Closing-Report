@@ -1633,6 +1633,7 @@ function processFile(file) {
       setProgress(30, '엑셀 파싱 중...');
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: true });
+      console.log('[DEBUG sheets]', wb.SheetNames);
       const ws = wb.Sheets[wb.SheetNames[0]];
       setProgress(60, '데이터 변환 중...');
 
@@ -1717,8 +1718,12 @@ function processFile(file) {
         }
         // ── DEBUG: 첫 5건 cdYm 출력 ──
         if (records.length < 5) {
+          const rawVal = colDate >= 0 ? row[colDate] : 'NO_COL';
           console.log('[DEBUG cdYm] row', records.length,
-            '| raw=', colDate >= 0 ? row[colDate] : 'NO_COL',
+            '| colDate=', colDate,
+            '| typeof raw=', typeof rawVal,
+            '| isDate=', rawVal instanceof Date,
+            '| raw=', rawVal,
             '| cdYm=', cdYm);
         }
         records.push({
