@@ -241,6 +241,14 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
         <i class="sb-icon fas fa-cog"></i>
         <span class="sb-label">시스템 설정</span>
       </div>
+      <div class="sb-item" data-page="auth" onclick="goPage('auth')">
+        <i class="sb-icon fas fa-user-shield"></i>
+        <span class="sb-label">권한 설정</span>
+      </div>
+      <div class="sb-item" data-page="ipallow" onclick="goPage('ipallow')">
+        <i class="sb-icon fas fa-shield-alt"></i>
+        <span class="sb-label">허용 IP 등록</span>
+      </div>
     </div>
 
 
@@ -447,6 +455,61 @@ let AGENT_GROUPS = [];
 let editAgentCategories = [];
 let editAgentGroups = [];
 let settingsAgentTab = 'categories';
+
+// ==================== 권한설정 / 허용 IP 전역 상태 ====================
+const AUTH_USERS_KEY  = 'apl_auth_users_v1';
+const AUTH_IP_KEY     = 'apl_auth_ip_v1';
+
+// 메뉴 목록 (page 키 = data-page 값과 동일)
+const MENU_LIST = [
+  { page:'overview',       label:'종합 개요' },
+  { page:'balance',        label:'잔고 현황' },
+  { page:'product',        label:'상품별 현황' },
+  { page:'agent',          label:'모집인별 현황' },
+  { page:'newloan',        label:'신규대출 현황' },
+  { page:'overdue',        label:'연체 현황' },
+  { page:'overdue-change', label:'연체율 변동' },
+  { page:'vintage',        label:'빈티지 분석' },
+  { page:'realestate',     label:'부동산 현황' },
+  { page:'trend',          label:'월별 추이' },
+  { page:'upload',         label:'결산자료 업로드' },
+  { page:'contract',       label:'계약리스트' },
+  { page:'settings',       label:'시스템 설정' },
+  { page:'auth',           label:'권한 설정' },
+  { page:'ipallow',        label:'허용 IP 등록' },
+];
+
+// 기본 계정 구조
+function defaultAuthUsers() {
+  return [
+    {
+      id: 'admin',
+      password: 'admin1234',
+      name: '관리자',
+      role: 'admin',
+      allowedPages: MENU_LIST.map(m => m.page), // 전체 허용
+      createdAt: new Date().toISOString()
+    }
+  ];
+}
+function defaultAuthIP() {
+  return { enabled: false, list: [] };
+}
+
+function loadAuthUsers() {
+  try { return JSON.parse(localStorage.getItem(AUTH_USERS_KEY)) || defaultAuthUsers(); }
+  catch(_) { return defaultAuthUsers(); }
+}
+function saveAuthUsers(users) {
+  localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
+}
+function loadAuthIP() {
+  try { return JSON.parse(localStorage.getItem(AUTH_IP_KEY)) || defaultAuthIP(); }
+  catch(_) { return defaultAuthIP(); }
+}
+function saveAuthIP(ipData) {
+  localStorage.setItem(AUTH_IP_KEY, JSON.stringify(ipData));
+}
 
 // ==================== IndexedDB 헬퍼 ====================
 const IDB_NAME    = 'apl-db';
@@ -964,7 +1027,7 @@ async function refreshMgmtTeamSelect() {
 async function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
-  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate' && currentPage !== 'vintage') {
+  if (!LOAN && currentPage !== 'upload' && currentPage !== 'trend' && currentPage !== 'contract' && currentPage !== 'settings' && currentPage !== 'newloan' && currentPage !== 'overdue-change' && currentPage !== 'realestate' && currentPage !== 'vintage' && currentPage !== 'auth' && currentPage !== 'ipallow') {
     el.innerHTML = \`<div class="flex flex-col items-center justify-center h-64 gap-4 text-gray-400">
       <i class="fas fa-cloud-upload-alt text-5xl text-blue-200"></i>
       <p class="text-lg font-medium text-gray-500">결산자료가 없습니다</p>
@@ -996,6 +1059,8 @@ async function renderPage() {
       case 'contract':  renderContractPage(el);  break;
       case 'newloan':   renderNewLoan(el);        break;
       case 'settings':  renderSettingsPage(el);  break;
+      case 'auth':      renderAuthPage(el);      break;
+      case 'ipallow':   renderIPAllowPage(el);   break;
     }
   } finally {
     // ── 원본 records 복원 (필터링 영구 적용 방지)
@@ -5419,6 +5484,461 @@ function renderTrend(el) {
       {label:'30일연체율',data:tData.overdue.map(o=>o.rate_30),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.08)',fill:true}
     ],{pct:true});
   },50);
+}
+
+// ==================== 페이지: 권한 설정 ====================
+function renderAuthPage(el) {
+  const users = loadAuthUsers();
+
+  function html() {
+    return \`
+<div class="space-y-5">
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-user-shield mr-2 text-blue-600"></i>권한 설정</h2>
+    <button onclick="openNewUserModal()" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+      <i class="fas fa-plus"></i>아이디 개설
+    </button>
+  </div>
+
+  <div class="card overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="bg-gray-50 border-b border-gray-200">
+          <th class="text-left px-4 py-3 font-semibold text-gray-600 w-32">아이디</th>
+          <th class="text-left px-4 py-3 font-semibold text-gray-600 w-24">이름</th>
+          <th class="text-left px-4 py-3 font-semibold text-gray-600">허용 메뉴</th>
+          <th class="text-left px-4 py-3 font-semibold text-gray-600 w-28">역할</th>
+          <th class="text-center px-4 py-3 font-semibold text-gray-600 w-48">관리</th>
+        </tr>
+      </thead>
+      <tbody>
+        \${users.map((u,i) => \`
+        <tr class="border-b border-gray-100 hover:bg-gray-50">
+          <td class="px-4 py-3 font-mono text-blue-700 font-medium">\${u.id}</td>
+          <td class="px-4 py-3 text-gray-700">\${u.name}</td>
+          <td class="px-4 py-3">
+            \${u.role === 'admin'
+              ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium"><i class="fas fa-infinity"></i>전체</span>'
+              : \`<span class="text-xs text-gray-500">\${u.allowedPages.length}개 메뉴 허용</span>\`
+            }
+          </td>
+          <td class="px-4 py-3">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold \${u.role==='admin'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600'}">
+              \${u.role==='admin'?'관리자':'일반'}
+            </span>
+          </td>
+          <td class="px-4 py-3">
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="openEditUserModal(\${i})" class="px-2.5 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 border border-blue-200">
+                <i class="fas fa-key mr-1"></i>권한편집
+              </button>
+              <button onclick="openCopyUserModal(\${i})" class="px-2.5 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100 border border-green-200">
+                <i class="fas fa-copy mr-1"></i>복제
+              </button>
+              <button onclick="resetUserPw(\${i})" class="px-2.5 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100 border border-orange-200">
+                <i class="fas fa-redo mr-1"></i>PW초기화
+              </button>
+              \${u.id!=='admin'?\`<button onclick="deleteUser(\${i})" class="px-2.5 py-1 text-xs bg-red-50 text-red-500 rounded hover:bg-red-100 border border-red-200"><i class="fas fa-trash"></i></button>\`:''}
+            </div>
+          </td>
+        </tr>\`).join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 신규 계정 모달 -->
+  <div id="modal-newuser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-base font-bold text-gray-800"><i class="fas fa-user-plus mr-2 text-blue-600"></i>아이디 개설</h3>
+        <button onclick="closeNewUserModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">아이디 <span class="text-red-500">*</span></label>
+          <input id="nu-id" type="text" placeholder="영문/숫자, 4자 이상" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">이름 <span class="text-red-500">*</span></label>
+          <input id="nu-name" type="text" placeholder="사용자 이름" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">초기 비밀번호 <span class="text-red-500">*</span></label>
+          <input id="nu-pw" type="text" placeholder="8자 이상" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">역할</label>
+          <select id="nu-role" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="user">일반 사용자</option>
+            <option value="admin">관리자 (전체 허용)</option>
+          </select>
+        </div>
+        <div id="nu-menus-wrap">
+          <label class="block text-xs font-semibold text-gray-600 mb-2">허용 메뉴</label>
+          <div class="grid grid-cols-2 gap-1.5 border border-gray-200 rounded-lg p-3 max-h-52 overflow-y-auto">
+            \${MENU_LIST.map(m=>\`
+            <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 rounded p-1">
+              <input type="checkbox" class="nu-menu-chk rounded" value="\${m.page}" checked>
+              <span>\${m.label}</span>
+            </label>\`).join('')}
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button onclick="nuCheckAll(true)" class="text-xs text-blue-600 hover:underline">전체선택</button>
+            <span class="text-gray-300">|</span>
+            <button onclick="nuCheckAll(false)" class="text-xs text-gray-500 hover:underline">전체해제</button>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="closeNewUserModal()" class="flex-1 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">취소</button>
+        <button onclick="submitNewUser()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">개설</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 권한 편집 모달 -->
+  <div id="modal-edituser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-base font-bold text-gray-800"><i class="fas fa-key mr-2 text-blue-600"></i>권한 편집</h3>
+        <button onclick="closeEditUserModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+      </div>
+      <div id="eu-content"></div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="closeEditUserModal()" class="flex-1 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">취소</button>
+        <button onclick="submitEditUser()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 권한 복제 모달 -->
+  <div id="modal-copyuser" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-base font-bold text-gray-800"><i class="fas fa-copy mr-2 text-green-600"></i>권한 복제</h3>
+        <button onclick="closeCopyUserModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+      </div>
+      <p class="text-sm text-gray-600 mb-4" id="copy-src-label"></p>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">복제 대상 아이디 선택</label>
+          <select id="copy-target-select" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+          </select>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="closeCopyUserModal()" class="flex-1 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">취소</button>
+        <button onclick="submitCopyUser()" class="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">복제 적용</button>
+      </div>
+    </div>
+  </div>
+</div>\`;
+  }
+
+  el.innerHTML = html();
+
+  // ── 역할 변경 시 메뉴 체크박스 표시 토글
+  document.getElementById('nu-role').addEventListener('change', function() {
+    document.getElementById('nu-menus-wrap').style.display = this.value === 'admin' ? 'none' : 'block';
+  });
+
+  let _editIdx = -1;
+  let _copyIdx = -1;
+
+  window.openNewUserModal = function() {
+    document.getElementById('modal-newuser').classList.remove('hidden');
+  };
+  window.closeNewUserModal = function() {
+    document.getElementById('modal-newuser').classList.add('hidden');
+    ['nu-id','nu-name','nu-pw'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+    document.getElementById('nu-role').value = 'user';
+    document.querySelectorAll('.nu-menu-chk').forEach(c => c.checked = true);
+    document.getElementById('nu-menus-wrap').style.display = 'block';
+  };
+  window.nuCheckAll = function(v) {
+    document.querySelectorAll('.nu-menu-chk').forEach(c => c.checked = v);
+  };
+  window.submitNewUser = function() {
+    const id   = document.getElementById('nu-id').value.trim();
+    const name = document.getElementById('nu-name').value.trim();
+    const pw   = document.getElementById('nu-pw').value.trim();
+    const role = document.getElementById('nu-role').value;
+    if (!id || id.length < 2)  { alert('아이디는 2자 이상 입력하세요.'); return; }
+    if (!name)                  { alert('이름을 입력하세요.'); return; }
+    if (!pw || pw.length < 4)   { alert('비밀번호는 4자 이상 입력하세요.'); return; }
+    const us = loadAuthUsers();
+    if (us.find(u => u.id === id)) { alert('이미 사용 중인 아이디입니다.'); return; }
+    const checked = [...document.querySelectorAll('.nu-menu-chk:checked')].map(c => c.value);
+    us.push({ id, password:pw, name, role, allowedPages: role==='admin' ? MENU_LIST.map(m=>m.page) : checked, createdAt: new Date().toISOString() });
+    saveAuthUsers(us);
+    window.closeNewUserModal();
+    renderAuthPage(el);
+  };
+
+  window.openEditUserModal = function(i) {
+    _editIdx = i;
+    const us = loadAuthUsers();
+    const u  = us[i];
+    const isAdmin = u.role === 'admin';
+    document.getElementById('eu-content').innerHTML = \`
+      <div class="mb-3 p-3 bg-gray-50 rounded-lg">
+        <span class="text-sm font-bold text-gray-700">\${u.id}</span>
+        <span class="ml-2 text-sm text-gray-500">(\${u.name})</span>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs font-semibold text-gray-600 mb-1">역할</label>
+        <select id="eu-role" onchange="euRoleChange(this.value)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="user" \${!isAdmin?'selected':''}>일반 사용자</option>
+          <option value="admin" \${isAdmin?'selected':''}>관리자 (전체 허용)</option>
+        </select>
+      </div>
+      <div id="eu-menus-wrap" \${isAdmin?'style="display:none"':''}>
+        <label class="block text-xs font-semibold text-gray-600 mb-2">허용 메뉴</label>
+        <div class="grid grid-cols-2 gap-1.5 border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+          \${MENU_LIST.map(m=>\`
+          <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 rounded p-1">
+            <input type="checkbox" class="eu-menu-chk rounded" value="\${m.page}" \${(u.allowedPages||[]).includes(m.page)?'checked':''}>
+            <span>\${m.label}</span>
+          </label>\`).join('')}
+        </div>
+        <div class="flex gap-2 mt-2">
+          <button onclick="euCheckAll(true)" class="text-xs text-blue-600 hover:underline">전체선택</button>
+          <span class="text-gray-300">|</span>
+          <button onclick="euCheckAll(false)" class="text-xs text-gray-500 hover:underline">전체해제</button>
+        </div>
+      </div>\`;
+    document.getElementById('modal-edituser').classList.remove('hidden');
+  };
+  window.euRoleChange = function(v) {
+    document.getElementById('eu-menus-wrap').style.display = v==='admin' ? 'none' : 'block';
+  };
+  window.euCheckAll = function(v) {
+    document.querySelectorAll('.eu-menu-chk').forEach(c => c.checked = v);
+  };
+  window.closeEditUserModal = function() {
+    document.getElementById('modal-edituser').classList.add('hidden');
+    _editIdx = -1;
+  };
+  window.submitEditUser = function() {
+    if (_editIdx < 0) return;
+    const us   = loadAuthUsers();
+    const role = document.getElementById('eu-role').value;
+    const checked = [...document.querySelectorAll('.eu-menu-chk:checked')].map(c => c.value);
+    us[_editIdx].role         = role;
+    us[_editIdx].allowedPages = role==='admin' ? MENU_LIST.map(m=>m.page) : checked;
+    saveAuthUsers(us);
+    window.closeEditUserModal();
+    renderAuthPage(el);
+  };
+
+  window.resetUserPw = function(i) {
+    const us = loadAuthUsers();
+    const newPw = prompt(\`[\${us[i].id}] 새 비밀번호 입력:\`);
+    if (!newPw || newPw.length < 4) { if(newPw !== null) alert('4자 이상 입력하세요.'); return; }
+    us[i].password = newPw;
+    saveAuthUsers(us);
+    alert('비밀번호가 초기화되었습니다.');
+  };
+
+  window.deleteUser = function(i) {
+    const us = loadAuthUsers();
+    if (!confirm(\`[\${us[i].id}] 계정을 삭제하시겠습니까?\`)) return;
+    us.splice(i, 1);
+    saveAuthUsers(us);
+    renderAuthPage(el);
+  };
+
+  window.openCopyUserModal = function(i) {
+    _copyIdx = i;
+    const us = loadAuthUsers();
+    const src = us[i];
+    document.getElementById('copy-src-label').textContent = \`[  \${src.id} / \${src.name}  ] 의 권한을 다른 계정에 복제합니다.\`;
+    const sel = document.getElementById('copy-target-select');
+    sel.innerHTML = us.filter((_,j)=>j!==i).map(u=>\`<option value="\${u.id}">\${u.id} (\${u.name})</option>\`).join('');
+    if (!sel.innerHTML) { alert('복제 대상 계정이 없습니다.'); return; }
+    document.getElementById('modal-copyuser').classList.remove('hidden');
+  };
+  window.closeCopyUserModal = function() {
+    document.getElementById('modal-copyuser').classList.add('hidden');
+    _copyIdx = -1;
+  };
+  window.submitCopyUser = function() {
+    if (_copyIdx < 0) return;
+    const us  = loadAuthUsers();
+    const src = us[_copyIdx];
+    const targetId = document.getElementById('copy-target-select').value;
+    const ti = us.findIndex(u => u.id === targetId);
+    if (ti < 0) return;
+    us[ti].role         = src.role;
+    us[ti].allowedPages = [...src.allowedPages];
+    saveAuthUsers(us);
+    window.closeCopyUserModal();
+    renderAuthPage(el);
+    alert(\`[\${targetId}] 에 권한을 복제했습니다.\`);
+  };
+}
+
+// ==================== 페이지: 허용 IP 등록 ====================
+function renderIPAllowPage(el) {
+  function html() {
+    const ipData = loadAuthIP();
+    const myIP   = '확인 중...';
+
+    return \`
+<div class="space-y-5">
+  <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-shield-alt mr-2 text-blue-600"></i>허용 IP 등록</h2>
+
+  <div class="text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
+    회사 내부 IP인 192.168.xx가 아니라 인터넷에서 확인되는 공인 IP를 등록하세요. 여러 사무실이나 VPN을 사용하는 경우 각각 등록할 수 있으며, CIDR 대역도 지원합니다.
+  </div>
+
+  <!-- 현재 접속 공인 IP -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <p class="text-xs text-gray-500 mb-1">현재 접속 공인 IP</p>
+      <p class="text-2xl font-bold text-gray-800" id="my-public-ip">조회 중...</p>
+      <p class="text-xs text-gray-400 mt-1">현재 규칙: <span class="font-medium" id="my-ip-cidr-hint">-</span> 으로 포함됩니다.</p>
+    </div>
+    <div class="card p-5 flex items-center justify-between">
+      <div>
+        <p class="text-sm font-semibold text-gray-700">로그인 IP 제한 사용</p>
+        <p class="text-xs text-gray-500 mt-0.5 \${ipData.enabled?'text-orange-500 font-medium':''}">
+          \${ipData.enabled ? '활성화됨 — 허용된 IP에서만 로그인 가능' : '비활성화 — 모든 IP에서 접근 가능'}
+        </p>
+      </div>
+      <label class="relative inline-flex items-center cursor-pointer">
+        <input type="checkbox" id="ip-enable-toggle" class="sr-only peer" \${ipData.enabled?'checked':''} onchange="toggleIPRestriction(this.checked)">
+        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+      </label>
+    </div>
+  </div>
+
+  <!-- IP 등록 폼 -->
+  <div class="card p-5">
+    <p class="text-sm font-semibold text-gray-700 mb-3">허용 IP 목록 <span class="ml-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold" id="ip-list-count">\${ipData.list.length}</span></p>
+
+    <div class="flex gap-2 mb-4">
+      <input id="ip-label-input" type="text" placeholder="예: 본사, 지점, 자택, 회사 VPN" maxlength="30"
+        class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <input id="ip-cidr-input" type="text" placeholder="예: 203.0.113.10 또는 203.0.113.0/24" maxlength="50"
+        class="flex-[2] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <button onclick="addIPEntry()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 whitespace-nowrap">
+        <i class="fas fa-plus mr-1"></i>추가
+      </button>
+      <button onclick="addMyIPEntry()" class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 whitespace-nowrap border border-gray-300" title="현재 IP 추가">
+        <i class="fas fa-crosshairs mr-1"></i>현재 IP 추가
+      </button>
+    </div>
+
+    <div class="overflow-auto rounded-lg border border-gray-200">
+      <table class="w-full text-sm" id="ip-list-table">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="text-center px-3 py-2.5 font-semibold text-gray-600 w-12">사용</th>
+            <th class="text-left px-3 py-2.5 font-semibold text-gray-600 w-40">구분명</th>
+            <th class="text-left px-3 py-2.5 font-semibold text-gray-600">공인 IP 또는 CIDR</th>
+            <th class="text-center px-3 py-2.5 font-semibold text-gray-600 w-16">삭제</th>
+          </tr>
+        </thead>
+        <tbody id="ip-tbody">
+          \${ipData.list.length === 0
+            ? '<tr><td colspan="4" class="text-center py-8 text-gray-400 text-sm">등록된 IP가 없습니다.</td></tr>'
+            : ipData.list.map((entry,i) => \`
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="text-center px-3 py-2.5">
+              <input type="checkbox" \${entry.enabled?'checked':''} onchange="toggleIPEntry(\${i},this.checked)"
+                class="w-4 h-4 text-blue-600 rounded">
+            </td>
+            <td class="px-3 py-2.5 text-gray-700 font-medium">\${entry.label||'-'}</td>
+            <td class="px-3 py-2.5 font-mono text-blue-700">\${entry.cidr}</td>
+            <td class="text-center px-3 py-2.5">
+              <button onclick="deleteIPEntry(\${i})" class="w-7 h-7 flex items-center justify-center bg-red-100 text-red-500 rounded hover:bg-red-200 mx-auto">
+                <i class="fas fa-trash text-xs"></i>
+              </button>
+            </td>
+          </tr>\`).join('')
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex justify-end mt-3">
+      <button onclick="saveIPList()" class="flex items-center gap-2 px-5 py-2 bg-blue-700 text-white rounded-lg text-sm font-semibold hover:bg-blue-800">
+        <i class="fas fa-save"></i>저장
+      </button>
+    </div>
+    <p class="text-xs text-gray-400 mt-2 text-right" id="ip-save-time">\${ipData.savedAt ? '최근 저장: ' + new Date(ipData.savedAt).toLocaleString('ko-KR') : ''}</p>
+  </div>
+</div>\`;
+  }
+
+  el.innerHTML = html();
+
+  // 공인 IP 조회
+  fetch('https://api.ipify.org?format=json')
+    .then(r=>r.json())
+    .then(d=>{
+      const ip = d.ip || '';
+      const ipEl = document.getElementById('my-public-ip');
+      const hintEl = document.getElementById('my-ip-cidr-hint');
+      if (ipEl) ipEl.textContent = ip;
+      if (hintEl) {
+        const parts = ip.split('.');
+        hintEl.textContent = parts.length===4 ? parts.slice(0,3).join('.')+'.0/24' : ip;
+      }
+    })
+    .catch(()=>{ const e=document.getElementById('my-public-ip'); if(e) e.textContent='조회 실패'; });
+
+  window._myPublicIP = '';
+  fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>{ window._myPublicIP = d.ip||''; });
+
+  window.toggleIPRestriction = function(v) {
+    const ipData = loadAuthIP();
+    ipData.enabled = v;
+    saveAuthIP(ipData);
+  };
+
+  window.addIPEntry = function() {
+    const label = (document.getElementById('ip-label-input').value||'').trim();
+    const cidr  = (document.getElementById('ip-cidr-input').value||'').trim();
+    if (!cidr) { alert('IP 또는 CIDR을 입력하세요.'); return; }
+    const ipData = loadAuthIP();
+    ipData.list.push({ label, cidr, enabled: true });
+    saveAuthIP(ipData);
+    renderIPAllowPage(el);
+  };
+
+  window.addMyIPEntry = function() {
+    const ip = window._myPublicIP || document.getElementById('my-public-ip').textContent;
+    if (!ip || ip === '조회 중...' || ip === '조회 실패') { alert('공인 IP 조회에 실패했습니다. 직접 입력해주세요.'); return; }
+    document.getElementById('ip-cidr-input').value = ip;
+    document.getElementById('ip-label-input').focus();
+  };
+
+  window.toggleIPEntry = function(i, v) {
+    const ipData = loadAuthIP();
+    ipData.list[i].enabled = v;
+    saveAuthIP(ipData);
+    const cnt = document.getElementById('ip-list-count');
+    if(cnt) cnt.textContent = ipData.list.length;
+  };
+
+  window.deleteIPEntry = function(i) {
+    const ipData = loadAuthIP();
+    if (!confirm(\`[\${ipData.list[i].cidr}] 을 삭제하시겠습니까?\`)) return;
+    ipData.list.splice(i, 1);
+    saveAuthIP(ipData);
+    renderIPAllowPage(el);
+  };
+
+  window.saveIPList = function() {
+    const ipData = loadAuthIP();
+    ipData.savedAt = new Date().toISOString();
+    saveAuthIP(ipData);
+    const t = document.getElementById('ip-save-time');
+    if(t) t.textContent = '최근 저장: ' + new Date().toLocaleString('ko-KR');
+    alert('저장되었습니다.');
+  };
 }
 
 // ==================== 페이지: 시스템 설정 ====================
