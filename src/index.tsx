@@ -4334,6 +4334,9 @@ async function renderVintage(el) {
   const baseDate    = LOAN ? LOAN.base_date : null;
   const baseYm      = baseDate ? baseDate.replace(/-/g,'').slice(0,6) : null;
 
+  // ── 기준월 이하 스냅샷만 사용 (미래 데이터 제외)
+  const snapKeys = baseYm ? allKeys.filter(k => k <= baseYm) : allKeys;
+
   // ── 필터 적용
   const curRecs     = vintageFilterRecs(curRecsRaw);
 
@@ -4398,7 +4401,7 @@ async function renderVintage(el) {
   const cohortCurves = {};   // { YYYYMM: [{elapsed, rate10, rate30}] }
   const maxElapsed   = 36;   // 최대 36개월까지
 
-  allKeys.forEach(snapYm => {
+  snapKeys.forEach(snapYm => {
     const snap = db[snapYm];
     if (!snap || !snap.records) return;
     const snapYmNum = parseInt(snapYm.slice(0,4))*12 + parseInt(snapYm.slice(4));
@@ -4477,7 +4480,7 @@ async function renderVintage(el) {
     }));
 
   // 다월 추이 (필터 적용)
-  const trendRows = allKeys
+  const trendRows = snapKeys
     .map(k => {
       const e = db[k];
       if (!e || !e.records) return null;
@@ -4506,7 +4509,7 @@ async function renderVintage(el) {
       \${filterSel}
       \${prodSelHtml}
       <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
-        기준: \${baseDate || '결산자료 없음'}\${baseYm ? ' (' + allKeys.length + '개월 적재)' : ''}
+        기준: \${baseDate || '결산자료 없음'}\${baseYm ? ' (' + snapKeys.length + '개월 / 전체 ' + allKeys.length + '개월)' : ''}
       </span>
     </div>
   </div>
@@ -4562,7 +4565,7 @@ async function renderVintage(el) {
           ② 월별 포트폴리오 연체율 추이 <span class="text-xs text-gray-400 font-normal">(유사 빈티지)</span>
         </h3>
         <p class="text-xs text-gray-400 mt-0.5">
-          IDB에 쌓인 월별 결산자료 기반 | 각 월 총잔고 대비 연체잔고 시계열 | \${trendRows.length}개월치
+          기준월 이하 결산자료 기반 | 각 월 총잔고 대비 연체잔고 시계열 | \${trendRows.length}개월치
         </p>
       </div>
     </div>
