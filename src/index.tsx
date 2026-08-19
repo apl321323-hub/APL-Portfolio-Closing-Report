@@ -1696,9 +1696,16 @@ function processFile(file) {
             const mm = String(jsDate.getUTCMonth()+1).padStart(2,'0');
             cdYm = String(yy) + mm;   // e.g. "202506"
           } else {
-            // 문자열 형태: "2025-06-15", "20250615", "2025.06.15" 등
-            const s = String(raw).replace(/[.\-\/]/g,'');
-            if (s.length >= 6) cdYm = s.slice(0,4) + s.slice(4,6);
+            // 문자열 형태: "2025-06-15", "2025.6.15", "2025/1/5", "20250615" 등
+            // 정규식으로 년(4자리) + 월(1~2자리) 직접 추출 → 한 자리 월도 안전하게 처리
+            const ms = String(raw).match(/(\d{4})[.\-\/](\d{1,2})/);
+            if (ms) {
+              cdYm = ms[1] + ms[2].padStart(2, '0');  // "2021-1-5" → "202101"
+            } else {
+              // 구분자 없는 순수 숫자열: "20250615" → "202506"
+              const digits = String(raw).replace(/\D/g,'');
+              if (digits.length >= 6) cdYm = digits.slice(0,4) + digits.slice(4,6);
+            }
           }
         }
         records.push({
@@ -4292,7 +4299,7 @@ async function renderVintage(el) {
   const vintRows = Object.entries(vintMap)
     .sort(([a],[b]) => a.localeCompare(b))
     .map(([ym, v]) => ({
-      ym, label: ym.slice(0,4)+'.'+ym.slice(4,6)+'월',
+      ym, label: ym.slice(0,4) + '.' + parseInt(ym.slice(4,6)) + '월',
       ...v,
       rate10: v.bal>0 ? +(v.od10/v.bal*100).toFixed(2) : 0,
       rate30: v.bal>0 ? +(v.od30/v.bal*100).toFixed(2) : 0,
@@ -4460,7 +4467,7 @@ async function renderVintage(el) {
         <tbody>
           \${hmCohorts.map(cohYm => {
             const row = heatmap[cohYm] || {};
-            const lbl = cohYm.slice(0,4)+'.'+cohYm.slice(4,6);
+            const lbl = cohYm.slice(0,4)+'.'+parseInt(cohYm.slice(4,6))+'월';
             return \`<tr>
               <td style="padding:5px 10px;border:1px solid #e5e7eb;font-weight:600;color:#374151;white-space:nowrap;background:#f9fafb">\${lbl}</td>
               \${elapsedCols.map(e => {
@@ -4559,7 +4566,7 @@ async function renderVintage(el) {
       const datasets = curveKeys.map((cohYm, i) => {
         const pts = cohortCurves[cohYm].sort((a,b)=>a.elapsed-b.elapsed);
         return {
-          label: cohYm.slice(0,4)+'.'+cohYm.slice(4,6),
+          label: cohYm.slice(0,4)+'.'+parseInt(cohYm.slice(4,6))+'월',
           data: pts.map(p => ({ x: p.elapsed, y: p.rate10 })),
           borderColor: palette[i % palette.length],
           backgroundColor: 'transparent',
