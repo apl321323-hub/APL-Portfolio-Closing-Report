@@ -4267,60 +4267,133 @@ function calcRealestateStats(records, loanTypeName) {
 
 // ==================== 페이지: 연체 빈티지 ====================
 async function renderVintage(el) {
-  const db = await getMonthsDB();
-  const allKeys = Object.keys(db).sort(); // 오래된 순
+  const db          = await getMonthsDB();
+  const allKeys     = Object.keys(db).sort();  // YYYYMM 오래된 순
 
-  // ── 현재 선택된 월(LOAN) 기준 단면 분석용 레코드
-  const curRecs  = LOAN ? (LOAN.records || []) : [];
-  const hasCd    = curRecs.some(r => r.cd && r.cd.length === 6);
+  // ── 현재 선택 월 정보
+  const curRecs     = LOAN ? (LOAN.records || []) : [];
+  const baseDate    = LOAN ? LOAN.base_date : null;
+  // base_date "2026-06-30" → baseYm "202606"
+  const baseYm      = baseDate ? baseDate.replace(/-/g,'').slice(0,6) : null;
+  const hasCd       = curRecs.some(r => r.cd && r.cd.length === 6);
 
-  // ── 다월 IDB용: 각 월별 연체율 시계열
-  const trendEntries = allKeys
-    .map(k => ({ key: k, data: db[k] }))
-    .filter(e => e.data && e.data.records && e.data.base_date);
-
-  // ── ① 취급월별 현재 연체율 집계 (단일 월 결산자료 기준)
-  // cd 필드 기준 코호트 → 각 코호트의 잔고/연체잔고
-  const vintageMap = {}; // { YYYYMM: { bal, od10, od30, cnt, odCnt } }
-  if (hasCd) {
-    curRecs.forEach(r => {
-      const ym = r.cd || '__없음__';
-      if (!vintageMap[ym]) vintageMap[ym] = { bal: 0, od10: 0, od30: 0, cnt: 0, odCnt: 0 };
-      const v = vintageMap[ym];
-      v.bal  += r.b || 0;
-      v.cnt  += 1;
-      if ((r.d||0) >= 10) { v.od10 += r.b||0; v.odCnt++; }
-      if ((r.d||0) >= 30)   v.od30 += r.b||0;
-    });
-  }
-  const vintageRows = Object.entries(vintageMap)
-    .filter(([k]) => k !== '__없음__' && k.length === 6)
+  // ─────────────────────────────────────────────────────────────
+  // ① 취급월별 현재 연체율 집계  (단일 월 결산자료 단면)
+  // ─────────────────────────────────────────────────────────────
+  const vintMap = {};
+  curRecs.forEach(r => {
+    if (!r.cd || r.cd.length !== 6) return;
+    if (!vintMap[r.cd]) vintMap[r.cd] = { bal:0, od10:0, od30:0, cnt:0, odCnt:0 };
+    const v = vintMap[r.cd];
+    v.bal += r.b||0; v.cnt++;
+    if ((r.d||0) >= 10) { v.od10 += r.b||0; v.odCnt++; }
+    if ((r.d||0) >= 30)   v.od30 += r.b||0;
+  });
+  const vintRows = Object.entries(vintMap)
     .sort(([a],[b]) => a.localeCompare(b))
     .map(([ym, v]) => ({
-      label: ym.slice(0,4) + '.' + ym.slice(4,6) + '월',
-      ym,
+      ym, label: ym.slice(0,4)+'.'+ym.slice(4,6)+'월',
       ...v,
-      rate10: v.bal > 0 ? +(v.od10 / v.bal * 100).toFixed(2) : 0,
-      rate30: v.bal > 0 ? +(v.od30 / v.bal * 100).toFixed(2) : 0,
+      rate10: v.bal>0 ? +(v.od10/v.bal*100).toFixed(2) : 0,
+      rate30: v.bal>0 ? +(v.od30/v.bal*100).toFixed(2) : 0,
     }));
 
-  // ── ② 다월 연체율 추이 (IDB 전체 월 × 10일·30일 연체율)
-  const trendRows = trendEntries.map(e => {
-    const recs = e.data.records || [];
-    const totBal = recs.reduce((s,r) => s + (r.b||0), 0);
-    const od10   = recs.filter(r => (r.d||0) >= 10).reduce((s,r) => s + (r.b||0), 0);
-    const od30   = recs.filter(r => (r.d||0) >= 30).reduce((s,r) => s + (r.b||0), 0);
-    const label  = e.data.base_date.slice(0,7).replace('-','년 ') + '월';
-    return {
-      key: e.key, label,
-      rate10: totBal > 0 ? +(od10/totBal*100).toFixed(2) : 0,
-      rate30: totBal > 0 ? +(od30/totBal*100).toFixed(2) : 0,
-    };
+  // ─────────────────────────────────────────────────────────────
+  // ② 코호트별 누적연체 곡선  (IDB 다월)
+  //    각 코호트(취급월)가 N개월 경과 후 어느 결산월에 연체율이 얼마인지
+  //    cohortCurves[ym] = [ {elapsed:1, rate10, rate30}, {elapsed:2, ...}, ... ]
+  // ─────────────────────────────────────────────────────────────
+  const cohortCurves = {};   // { YYYYMM: [{elapsed, rate10, rate30}] }
+  const maxElapsed   = 36;   // 최대 36개월까지
+
+  allKeys.forEach(snapYm => {
+    const snap = db[snapYm];
+    if (!snap || !snap.records) return;
+    const snapYmNum = parseInt(snapYm.slice(0,4))*12 + parseInt(snapYm.slice(4));
+
+    // 이 스냅샷에서 cd 필드가 있는 건들만 코호트별로 집계
+    const snapMap = {};
+    snap.records.forEach(r => {
+      if (!r.cd || r.cd.length !== 6) return;
+      if (!snapMap[r.cd]) snapMap[r.cd] = { bal:0, od10:0, od30:0 };
+      const v = snapMap[r.cd];
+      v.bal += r.b||0;
+      if ((r.d||0)>=10) v.od10 += r.b||0;
+      if ((r.d||0)>=30) v.od30 += r.b||0;
+    });
+
+    Object.entries(snapMap).forEach(([cohortYm, v]) => {
+      if (v.bal === 0) return;
+      const cohortNum = parseInt(cohortYm.slice(0,4))*12 + parseInt(cohortYm.slice(4));
+      const elapsed   = snapYmNum - cohortNum;
+      if (elapsed < 0 || elapsed > maxElapsed) return;
+      if (!cohortCurves[cohortYm]) cohortCurves[cohortYm] = [];
+      cohortCurves[cohortYm].push({
+        elapsed,
+        snapYm,
+        rate10: +(v.od10/v.bal*100).toFixed(2),
+        rate30: +(v.od30/v.bal*100).toFixed(2),
+      });
+    });
   });
 
-  const baseDateLabel = LOAN ? LOAN.base_date : '결산자료 없음';
-  const noDataMsg = !hasCd
-    ? '<div class="p-4 text-sm text-amber-700 bg-amber-50 rounded-xl border border-amber-200"><i class="fas fa-info-circle mr-2"></i>현재 결산자료에 <strong>계약일자(cd)</strong> 필드가 없습니다. 결산자료를 재업로드하면 빈티지 분석이 활성화됩니다.</div>'
+  // 곡선이 2점 이상인 코호트만 표시 (최근 12개 코호트)
+  const curveKeys = Object.keys(cohortCurves)
+    .filter(k => cohortCurves[k].length >= 2)
+    .sort().slice(-12);
+  const hasCurves = curveKeys.length > 0;
+
+  // ─────────────────────────────────────────────────────────────
+  // ③ 경과월수 구간별 연체율 히트맵  (취급월 × 경과월 → 연체율)
+  //    행: 취급월 코호트, 열: 경과월 구간(1M, 2M, 3M, ...)
+  // ─────────────────────────────────────────────────────────────
+  // 히트맵 셀 데이터: heatmap[cohortYm][elapsed] = rate10
+  const heatmap = {};
+  Object.entries(cohortCurves).forEach(([cohortYm, pts]) => {
+    heatmap[cohortYm] = {};
+    pts.forEach(p => { heatmap[cohortYm][p.elapsed] = p.rate10; });
+  });
+  const hmCohorts = Object.keys(heatmap).sort().slice(-18); // 최근 18코호트
+  // 등장하는 경과월 구간 목록
+  const elapsedSet = new Set();
+  hmCohorts.forEach(k => Object.keys(heatmap[k]).forEach(e => elapsedSet.add(+e)));
+  const elapsedCols = Array.from(elapsedSet).sort((a,b)=>a-b);
+  const hasHeatmap  = hmCohorts.length > 0 && elapsedCols.length > 0;
+
+  // 히트맵 색상: 0%=초록→5%=노랑→10%↑=빨강
+  function hmColor(rate) {
+    if (rate <= 0)  return '#f0fdf4';
+    if (rate < 2)   return '#bbf7d0';
+    if (rate < 5)   return '#fef08a';
+    if (rate < 10)  return '#fb923c';
+    if (rate < 20)  return '#ef4444';
+    return '#7f1d1d';
+  }
+  function hmTextColor(rate) { return rate >= 5 ? '#fff' : '#374151'; }
+
+  // 다월 추이 (포트폴리오 전체)
+  const trendRows = allKeys
+    .map(k => {
+      const e = db[k];
+      if (!e || !e.records) return null;
+      const recs = e.records;
+      const tot  = recs.reduce((s,r)=>s+(r.b||0),0);
+      const od10 = recs.filter(r=>(r.d||0)>=10).reduce((s,r)=>s+(r.b||0),0);
+      const od30 = recs.filter(r=>(r.d||0)>=30).reduce((s,r)=>s+(r.b||0),0);
+      return {
+        label: e.base_date.slice(0,7).replace('-','년 ')+'월',
+        rate10: tot>0 ? +(od10/tot*100).toFixed(2):0,
+        rate30: tot>0 ? +(od30/tot*100).toFixed(2):0,
+      };
+    }).filter(Boolean);
+
+  // 재업로드 안내 배너
+  const noCdBanner = !hasCd && curRecs.length > 0
+    ? \`<div class="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+        <i class="fas fa-exclamation-triangle mt-0.5 text-amber-500"></i>
+        <div><strong>결산자료 재업로드 필요</strong> — 현재 저장된 결산자료에 계약일자(cd) 필드가 없습니다.<br>
+        재업로드하면 ①③ 차트가 활성화됩니다. ② 추이 차트는 다월 데이터 적재 후 활성화됩니다.</div>
+      </div>\`
     : '';
 
   el.innerHTML = \`
@@ -4329,105 +4402,176 @@ async function renderVintage(el) {
   <div class="flex items-center justify-between flex-wrap gap-2">
     <div>
       <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>연체 빈티지 분석</h2>
-      <p class="text-sm text-gray-500 mt-0.5">취급월(코호트)별 현재 시점 연체율 · 다월 연체율 추이</p>
+      <p class="text-sm text-gray-500 mt-0.5">취급월(코호트) 기준 연체율 — ① 단면 ② 누적곡선 ③ 히트맵</p>
     </div>
-    <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">기준: \${baseDateLabel}</span>
+    <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
+      기준: \${baseDate || '결산자료 없음'}\${baseYm ? ' (' + allKeys.length + '개월 적재)' : ''}
+    </span>
   </div>
 
-  \${noDataMsg}
+  \${noCdBanner}
 
   <!-- ① 취급월별 현재 연체율 바 차트 -->
   <div class="card p-5">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-indigo-400"></i>① 취급월별 현재 연체율 <span class="text-xs text-gray-400 font-normal ml-1">(현재 결산자료 단면)</span></h3>
-      <div class="flex gap-2 text-xs">
-        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm inline-block" style="background:#6366f1"></span>10일↑ 연체율</span>
-        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm inline-block" style="background:#dc2626"></span>30일↑ 연체율</span>
+    <div class="flex items-center justify-between mb-1">
+      <div>
+        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-indigo-400"></i>① 취급월별 현재 연체율</h3>
+        <p class="text-xs text-gray-400 mt-0.5">X축: 취급월 &nbsp;|&nbsp; Y축: 현재 기준 연체율 &nbsp;|&nbsp; 결산자료 단면</p>
+      </div>
+      <div class="flex gap-3 text-xs text-gray-500">
+        <span><span class="inline-block w-3 h-3 rounded-sm mr-1" style="background:#6366f1;opacity:.7"></span>10일↑</span>
+        <span><span class="inline-block w-3 h-3 rounded-sm mr-1" style="background:#dc2626;opacity:.7"></span>30일↑</span>
       </div>
     </div>
-    \${vintageRows.length === 0
-      ? '<div class="flex items-center justify-center h-32 text-gray-400 text-sm"><i class="fas fa-info-circle mr-2"></i>' + (hasCd ? '취급월 데이터가 없습니다' : '결산자료 재업로드 후 활성화됩니다') + '</div>'
-      : '<div class="chart-wrap-lg"><canvas id="vt-bar"></canvas></div>'
-    }
+    <div class="chart-wrap-lg mt-3"><canvas id="vt-bar"></canvas></div>
+    \${!hasCd ? '<p class="text-xs text-center text-amber-500 mt-2"><i class="fas fa-info-circle mr-1"></i>결산자료 재업로드 후 데이터 표시</p>' : ''}
   </div>
 
-  <!-- ② 다월 연체율 추이 라인 차트 -->
+  <!-- ② 코호트별 누적연체 곡선 -->
   <div class="card p-5">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-line mr-2 text-blue-400"></i>② 포트폴리오 연체율 추이 <span class="text-xs text-gray-400 font-normal ml-1">(IDB 저장 결산자료 전체 월)</span></h3>
-      <span class="text-xs text-gray-400">\${trendRows.length}개월치 데이터</span>
+    <div class="flex items-center justify-between mb-1">
+      <div>
+        <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-chart-line mr-2 text-blue-400"></i>② 코호트별 누적연체 곡선</h3>
+        <p class="text-xs text-gray-400 mt-0.5">X축: 실행 후 경과월수 &nbsp;|&nbsp; Y축: 누적 연체율(%) &nbsp;|&nbsp; 선: 취급월별</p>
+      </div>
+      <span class="text-xs text-gray-400">\${curveKeys.length}개 코호트</span>
     </div>
-    \${trendRows.length < 2
-      ? '<div class="flex flex-col items-center justify-center h-32 text-gray-400 text-sm gap-1"><i class="fas fa-database text-2xl text-gray-200"></i><p>결산자료 2개월 이상 업로드 시 추이 확인 가능합니다</p></div>'
-      : '<div class="chart-wrap-lg"><canvas id="vt-trend"></canvas></div>'
+    \${hasCurves
+      ? '<div class="chart-wrap-lg mt-3"><canvas id="vt-curve"></canvas></div>'
+      : '<div class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2 mt-2"><i class="fas fa-layer-group text-3xl"></i><p class="text-sm text-gray-400">다월 결산자료 적재 후 활성화됩니다</p><p class="text-xs text-gray-400">결산자료를 여러 월 업로드하세요</p></div>'
     }
   </div>
 
-  <!-- ③ 취급월별 연체 상세 테이블 -->
-  \${vintageRows.length > 0 ? \`
+  <!-- ③ 경과월수 구간별 연체율 히트맵 -->
   <div class="card p-5">
-    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-indigo-400"></i>취급월별 연체 상세</h3>
+    <div class="mb-3">
+      <h3 class="text-sm font-bold text-gray-700"><i class="fas fa-th mr-2 text-purple-400"></i>③ 경과월수 구간별 연체율 히트맵</h3>
+      <p class="text-xs text-gray-400 mt-0.5">행: 취급월 코호트 &nbsp;|&nbsp; 열: 경과월 수 &nbsp;|&nbsp; 셀: 10일↑ 연체율(%)</p>
+    </div>
+    \${hasHeatmap ? \`
     <div class="overflow-auto">
-      <table class="data-table">
-        <thead><tr>
-          <th>취급월</th>
-          <th class="text-right">건수</th>
-          <th class="text-right">잔고</th>
-          <th class="text-right">연체건수</th>
-          <th class="text-right">10일↑ 연체잔고</th>
-          <th class="text-right">10일↑ 연체율</th>
-          <th class="text-right">30일↑ 연체잔고</th>
-          <th class="text-right">30일↑ 연체율</th>
-        </tr></thead>
+      <table style="border-collapse:collapse;font-size:11px;min-width:100%">
+        <thead>
+          <tr>
+            <th style="padding:5px 10px;background:#f9fafb;border:1px solid #e5e7eb;text-align:left;font-weight:600;color:#6b7280;white-space:nowrap">취급월</th>
+            \${elapsedCols.map(e=>\`<th style="padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;text-align:center;font-weight:600;color:#6b7280;white-space:nowrap">\${e}M</th>\`).join('')}
+          </tr>
+        </thead>
         <tbody>
-          \${vintageRows.map(v => \`<tr>
-            <td class="font-medium">\${v.label}</td>
-            <td class="text-right text-gray-600">\${fmtN(v.cnt)}</td>
-            <td class="text-right">\${fmtAmt(v.bal)}</td>
-            <td class="text-right \${v.odCnt>0?'text-orange-600':''}">\${fmtN(v.odCnt)}</td>
-            <td class="text-right \${v.od10>0?'text-orange-500':''}">\${fmtAmt(v.od10)}</td>
-            <td class="text-right font-bold \${v.rate10>=10?'text-red-600':v.rate10>=5?'text-orange-500':''}">\${v.rate10.toFixed(2)}%</td>
-            <td class="text-right \${v.od30>0?'text-red-400':''}">\${fmtAmt(v.od30)}</td>
-            <td class="text-right font-bold \${v.rate30>=10?'text-red-700':v.rate30>=5?'text-red-500':''}">\${v.rate30.toFixed(2)}%</td>
-          </tr>\`).join('')}
+          \${hmCohorts.map(cohYm => {
+            const row = heatmap[cohYm] || {};
+            const lbl = cohYm.slice(0,4)+'.'+cohYm.slice(4,6);
+            return \`<tr>
+              <td style="padding:5px 10px;border:1px solid #e5e7eb;font-weight:600;color:#374151;white-space:nowrap;background:#f9fafb">\${lbl}</td>
+              \${elapsedCols.map(e => {
+                const rate = row[e];
+                const bg   = rate != null ? hmColor(rate) : '#f9fafb';
+                const tc   = rate != null ? hmTextColor(rate) : '#d1d5db';
+                const txt  = rate != null ? rate.toFixed(1)+'%' : '-';
+                return \`<td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center;background:\${bg};color:\${tc};font-weight:\${rate>=5?'700':'400'}">\${txt}</td>\`;
+              }).join('')}
+            </tr>\`;
+          }).join('')}
         </tbody>
       </table>
     </div>
+    <div class="flex items-center gap-3 mt-3 text-xs text-gray-500 flex-wrap">
+      <span class="font-medium">범례:</span>
+      \${[['0%','#f0fdf4','#374151'],['~2%','#bbf7d0','#374151'],['~5%','#fef08a','#374151'],['~10%','#fb923c','#fff'],['~20%','#ef4444','#fff'],['20%↑','#7f1d1d','#fff']].map(([l,bg,tc])=>
+        \`<span style="background:\${bg};color:\${tc};padding:2px 8px;border-radius:4px;font-weight:500">\${l}</span>\`
+      ).join('')}
+    </div>
+    \` : '<div class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2"><i class="fas fa-th text-3xl"></i><p class="text-sm text-gray-400">다월 결산자료 적재 후 활성화됩니다</p></div>'}
   </div>
-  \` : ''}
+
+  <!-- 취급월별 연체 상세 테이블 -->
+  \${vintRows.length > 0 ? \`
+  <div class="card p-5">
+    <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-table mr-2 text-indigo-400"></i>취급월별 연체 상세 테이블</h3>
+    <div class="overflow-auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>취급월</th><th class="text-right">건수</th><th class="text-right">잔고</th>
+          <th class="text-right">연체건수</th>
+          <th class="text-right">10일↑ 연체잔고</th><th class="text-right">10일↑ 연체율</th>
+          <th class="text-right">30일↑ 연체잔고</th><th class="text-right">30일↑ 연체율</th>
+        </tr></thead>
+        <tbody>\${vintRows.map(v=>\`<tr>
+          <td class="font-medium">\${v.label}</td>
+          <td class="text-right text-gray-600">\${fmtN(v.cnt)}</td>
+          <td class="text-right">\${fmtAmt(v.bal)}</td>
+          <td class="text-right \${v.odCnt>0?'text-orange-600':''}">\${fmtN(v.odCnt)}</td>
+          <td class="text-right \${v.od10>0?'text-orange-500':''}">\${fmtAmt(v.od10)}</td>
+          <td class="text-right font-bold \${v.rate10>=10?'text-red-600':v.rate10>=5?'text-orange-500':''}">\${v.rate10.toFixed(2)}%</td>
+          <td class="text-right \${v.od30>0?'text-red-400':''}">\${fmtAmt(v.od30)}</td>
+          <td class="text-right font-bold \${v.rate30>=10?'text-red-700':v.rate30>=5?'text-red-500':''}">\${v.rate30.toFixed(2)}%</td>
+        </tr>\`).join('')}</tbody>
+      </table>
+    </div>
+  </div>\` : ''}
 </div>\`;
 
   // ── 차트 렌더링
   setTimeout(() => {
-    // ① 바 차트: 취급월별 연체율
-    if (vintageRows.length > 0) {
+    // ① 바 차트: 취급월별 현재 연체율
+    if (vintRows.length > 0) {
       mkBar('vt-bar',
-        vintageRows.map(v => v.label),
+        vintRows.map(v => v.label),
         [
-          { label: '10일↑ 연체율(%)', data: vintageRows.map(v => v.rate10),
-            backgroundColor: '#6366f180', borderColor: '#6366f1', borderWidth: 1.5 },
-          { label: '30일↑ 연체율(%)', data: vintageRows.map(v => v.rate30),
-            backgroundColor: '#dc262680', borderColor: '#dc2626', borderWidth: 1.5 },
+          { label:'10일↑ 연체율(%)', data: vintRows.map(v=>v.rate10),
+            backgroundColor:'rgba(99,102,241,.55)', borderColor:'#6366f1', borderWidth:1.5 },
+          { label:'30일↑ 연체율(%)', data: vintRows.map(v=>v.rate30),
+            backgroundColor:'rgba(220,38,38,.55)', borderColor:'#dc2626', borderWidth:1.5 },
         ],
-        { extra: { scales: {
-          y: { ticks: { callback: v => v + '%' }, title: { display: true, text: '연체율(%)' } }
+        { extra:{ scales:{
+          y:{ ticks:{callback:v=>v+'%'}, title:{display:true,text:'연체율(%)'} },
+          x:{ ticks:{maxRotation:45} }
         }}}
       );
+    } else {
+      // cd 없을 때도 빈 캔버스 대신 안내 표시는 HTML에서 처리됨
     }
-    // ② 라인 차트: 다월 포트폴리오 연체율 추이
-    if (trendRows.length >= 2) {
-      mkLine('vt-trend',
-        trendRows.map(r => r.label),
-        [
-          { label: '10일↑ 연체율(%)', data: trendRows.map(r => r.rate10),
-            borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.08)', fill: true },
-          { label: '30일↑ 연체율(%)', data: trendRows.map(r => r.rate30),
-            borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.08)', fill: true, borderDash: [4,2] },
-        ],
-        { pct: true }
-      );
+
+    // ② 코호트별 누적연체 곡선
+    if (hasCurves) {
+      // 컬러 팔레트 (최대 12개 코호트)
+      const palette = ['#6366f1','#3b82f6','#06b6d4','#10b981','#f59e0b','#f97316',
+                       '#ef4444','#8b5cf6','#ec4899','#84cc16','#14b8a6','#f43f5e'];
+      const datasets = curveKeys.map((cohYm, i) => {
+        const pts = cohortCurves[cohYm].sort((a,b)=>a.elapsed-b.elapsed);
+        return {
+          label: cohYm.slice(0,4)+'.'+cohYm.slice(4,6),
+          data: pts.map(p => ({ x: p.elapsed, y: p.rate10 })),
+          borderColor: palette[i % palette.length],
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.3,
+        };
+      });
+      const allElapsed = curveKeys.flatMap(k=>cohortCurves[k].map(p=>p.elapsed));
+      const maxE = Math.max(...allElapsed);
+      const chartEl = document.getElementById('vt-curve');
+      if (chartEl) {
+        if (charts['vt-curve']) { charts['vt-curve'].destroy(); }
+        charts['vt-curve'] = new Chart(chartEl, {
+          type: 'line',
+          data: { datasets },
+          options: {
+            responsive: true, maintainAspectRatio: true,
+            parsing: false,
+            plugins: { legend:{ position:'bottom', labels:{boxWidth:12, font:{size:11}} } },
+            scales: {
+              x: { type:'linear', title:{display:true,text:'경과월수(M)'},
+                   min:0, max:maxE, ticks:{stepSize:1, callback:v=>v+'M'} },
+              y: { title:{display:true,text:'10일↑ 연체율(%)'},
+                   ticks:{callback:v=>v+'%'} }
+            }
+          }
+        });
+      }
     }
-  }, 50);
+  }, 60);
 }
 
 async function renderRealestate(el) {
