@@ -4484,6 +4484,25 @@ async function renderVintage(el) {
     \` : '<div class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2"><i class="fas fa-th text-3xl"></i><p class="text-sm text-gray-400">다월 결산자료 적재 후 활성화됩니다</p></div>'}
   </div>
 
+  <!-- ④ 다월 포트폴리오 연체율 추이 -->
+  <div class="card p-5">
+    <div class="flex items-center justify-between mb-1">
+      <div>
+        <h3 class="text-sm font-bold text-gray-700">
+          <i class="fas fa-chart-area mr-2 text-teal-400"></i>
+          ④ 월별 포트폴리오 연체율 추이 <span class="text-xs text-gray-400 font-normal">(유사 빈티지)</span>
+        </h3>
+        <p class="text-xs text-gray-400 mt-0.5">
+          IDB에 쌓인 월별 결산자료 기반 | 각 월 총잔고 대비 연체잔고 시계열 | \${trendRows.length}개월치
+        </p>
+      </div>
+    </div>
+    \${trendRows.length >= 2
+      ? '<div class="chart-wrap-lg mt-3"><canvas id="vt-trend"></canvas></div>'
+      : '<div class="flex items-center justify-center h-40 text-gray-400 text-sm">결산자료 2개월↑ 업로드 시 표시 (' + trendRows.length + '개월 적재)</div>'
+    }
+  </div>
+
   <!-- 취급월별 연체 상세 테이블 -->
   \${vintRows.length > 0 ? \`
   <div class="card p-5">
@@ -4566,6 +4585,53 @@ async function renderVintage(el) {
                    min:0, max:maxE, ticks:{stepSize:1, callback:v=>v+'M'} },
               y: { title:{display:true,text:'10일↑ 연체율(%)'},
                    ticks:{callback:v=>v+'%'} }
+            }
+          }
+        });
+      }
+    }
+
+    // ④ 다월 포트폴리오 연체율 추이
+    if (trendRows.length >= 2) {
+      const tCtx = document.getElementById('vt-trend');
+      if (tCtx) {
+        new Chart(tCtx, {
+          type: 'line',
+          data: {
+            labels: trendRows.map(r => r.label),
+            datasets: [
+              {
+                label: '10일↑ 연체율(%)',
+                data: trendRows.map(r => r.rate10),
+                borderColor: '#0d9488',
+                backgroundColor: 'rgba(13,148,136,0.1)',
+                fill: true,
+                borderWidth: 2.5,
+                pointRadius: 4,
+                tension: 0.3
+              },
+              {
+                label: '30일↑ 연체율(%)',
+                data: trendRows.map(r => r.rate30),
+                borderColor: '#dc2626',
+                backgroundColor: 'rgba(220,38,38,0.08)',
+                fill: true,
+                borderWidth: 2,
+                borderDash: [5,3],
+                pointRadius: 3,
+                tension: 0.3
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+              tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y + '%' } }
+            },
+            scales: {
+              y: { ticks: { callback: v => v + '%' }, title: { display: true, text: '연체율(%)' } }
             }
           }
         });
