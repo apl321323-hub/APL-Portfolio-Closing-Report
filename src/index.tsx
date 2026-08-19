@@ -1707,11 +1707,12 @@ function processFile(file) {
             cdYm = String(yy) + mm;
           } else {
             // 문자열 형태: "2025-06-15", "2025.6.15", "2025/1/5" 등
-            const ms = String(raw).match(/(\d{4})[.\-\/](\d{1,2})/);
+            // 백슬래시 이스케이프 손실 방지를 위해 new RegExp 사용
+            const ms = String(raw).match(new RegExp('(\\d{4})[.\\-/](\\d{1,2})'));
             if (ms) {
               cdYm = ms[1] + ms[2].padStart(2, '0');
             } else {
-              const digits = String(raw).replace(/\D/g, '');
+              const digits = String(raw).replace(new RegExp('[^0-9]', 'g'), '');
               if (digits.length >= 6) cdYm = digits.slice(0, 4) + digits.slice(4, 6);
             }
           }
