@@ -1689,26 +1689,29 @@ function processFile(file) {
         const loanAmt     = isCollateral ? (loanK + chVal)          : 0;
         // 감정가   = 최종감정가 × 소유비율합계 / 100
         const appraised   = isCollateral ? (cfVal * cgVal / 100)    : 0;
-        // 계약일자 → 취급월 YYYYMM 추출 (엑셀 날짜 직렬/문자열 양방향 처리)
+        // 계약일자 → 취급월 YYYYMM 추출 (엑셀 날짜 직렬/문자열/Date 객체 모두 처리)
         let cdYm = '';
         if (colDate >= 0 && row[colDate]) {
           const raw = row[colDate];
-          if (typeof raw === 'number') {
-            // 엑셀 날짜 직렬 → JS Date
+          if (raw instanceof Date) {
+            // cellDates:true 옵션으로 Date 객체가 됐을 때 (가장 흔한 케이스)
+            const yy = raw.getFullYear();
+            const mm = String(raw.getMonth() + 1).padStart(2, '0');
+            cdYm = String(yy) + mm;  // "202601"
+          } else if (typeof raw === 'number') {
+            // cellDates:false 시 엑셀 날짜 직렬 숫자
             const jsDate = new Date(Math.round((raw - 25569) * 86400 * 1000));
             const yy = jsDate.getUTCFullYear();
-            const mm = String(jsDate.getUTCMonth()+1).padStart(2,'0');
-            cdYm = String(yy) + mm;   // e.g. "202506"
+            const mm = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
+            cdYm = String(yy) + mm;
           } else {
-            // 문자열 형태: "2025-06-15", "2025.6.15", "2025/1/5", "20250615" 등
-            // 정규식으로 년(4자리) + 월(1~2자리) 직접 추출 → 한 자리 월도 안전하게 처리
+            // 문자열 형태: "2025-06-15", "2025.6.15", "2025/1/5" 등
             const ms = String(raw).match(/(\d{4})[.\-\/](\d{1,2})/);
             if (ms) {
-              cdYm = ms[1] + ms[2].padStart(2, '0');  // "2021-1-5" → "202101"
+              cdYm = ms[1] + ms[2].padStart(2, '0');
             } else {
-              // 구분자 없는 순수 숫자열: "20250615" → "202506"
-              const digits = String(raw).replace(/\D/g,'');
-              if (digits.length >= 6) cdYm = digits.slice(0,4) + digits.slice(4,6);
+              const digits = String(raw).replace(/\D/g, '');
+              if (digits.length >= 6) cdYm = digits.slice(0, 4) + digits.slice(4, 6);
             }
           }
         }
