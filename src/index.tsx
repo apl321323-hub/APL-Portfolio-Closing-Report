@@ -4598,6 +4598,9 @@ async function renderVintage(el) {
       });
       const allElapsed = curveKeys.flatMap(k=>cohortCurves[k].map(p=>p.elapsed));
       const maxE = Math.max(...allElapsed);
+      // DEBUG: 코호트 및 경과월 현황 출력
+      console.log('[DEBUG curve] allKeys:', allKeys.length, '개월 적재 | curveKeys:', curveKeys.length, '개 코호트 | maxE:', maxE, 'M');
+      console.log('[DEBUG curve] cohortCurves 샘플:', Object.keys(cohortCurves).slice(0,3).map(k=>({k, pts:cohortCurves[k].length, maxEl:Math.max(...cohortCurves[k].map(p=>p.elapsed))})));
       const chartEl = document.getElementById('vt-curve');
       if (chartEl) {
         if (charts['vt-curve']) { charts['vt-curve'].destroy(); }
