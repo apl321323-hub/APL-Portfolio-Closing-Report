@@ -1884,6 +1884,16 @@ async function saveUploadedData() {
 }
 
 // ==================== TREND 정렬 유틸 ====================
+// "YYYY-MM" → "YY.M월" 변환 헬퍼 (모든 IDB 기반 레이블을 TREND.months 형식으로 통일)
+// 예: "2025-07" → "25.7월",  "2026-01" → "26.1월"
+function ymToTrendLabel(yyyymm) {
+  // yyyymm: "2026-07" 또는 "202607" 모두 처리
+  const clean = String(yyyymm).replace('-','');
+  const yr = parseInt(clean.slice(0,4)) - 2000;
+  const mo = parseInt(clean.slice(4,6));
+  return yr + '.' + mo + '월';
+}
+
 // TREND.months 및 연동 배열을 날짜 오름차순으로 재정렬
 // label 형식: "YY.M월" (예: "25.1월", "26.10월")
 function sortTrendMonths() {
@@ -3870,7 +3880,7 @@ async function renderOverdue(el) {
       // 날짜순 정렬된 월 목록 추출
       const mEntries = Object.entries(mdb)
         .filter(([,v])=>v&&v.records&&v.base_date)
-        .map(([,v])=>({label: v.base_date.slice(0,7).replace('-','년 ')+'월', recs: filterByMgmtTeam(v.records), bd: v.base_date}))
+        .map(([,v])=>({label: ymToTrendLabel(v.base_date.slice(0,7)), recs: filterByMgmtTeam(v.records), bd: v.base_date}))
         .sort((a,b)=>a.bd.localeCompare(b.bd));
       if(mEntries.length>=1) {
         // 그룹 필터 함수 (현재 overdueChartGroup 기준)
@@ -4612,7 +4622,7 @@ async function renderVintage(el) {
       const od10 = recs.filter(r=>(r.d||0)>=10).reduce((s,r)=>s+(r.b||0),0);
       const od30 = recs.filter(r=>(r.d||0)>=30).reduce((s,r)=>s+(r.b||0),0);
       return {
-        label: e.base_date.slice(0,7).replace('-','년 ')+'월',
+        label: ymToTrendLabel(e.base_date.slice(0,7)),
         rate10: tot>0 ? +(od10/tot*100).toFixed(2):0,
         rate30: tot>0 ? +(od30/tot*100).toFixed(2):0,
       };
