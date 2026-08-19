@@ -163,6 +163,16 @@ body{background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-di
       </div>
     </div>
 
+    <!-- 관리팀 필터 -->
+    <div class="px-3 py-2.5 border-b border-white border-opacity-10">
+      <p class="text-xs text-blue-300 mb-1.5">관리팀 필터</p>
+      <select id="sb-mgmt-select" onchange="onMgmtTeamFilter(this.value)"
+        class="w-full rounded-lg px-2 py-1.5 text-sm bg-white bg-opacity-10 text-white border border-white border-opacity-20 cursor-pointer hover:bg-opacity-20 transition-all"
+        style="appearance:none;-webkit-appearance:none;">
+        <option value="" style="background:#1e3a5f;color:#fff;">전체 관리팀</option>
+      </select>
+    </div>
+
     <!-- 메뉴 -->
     <div class="flex-1 py-3">
       <div class="sb-section">분석</div>
@@ -390,6 +400,8 @@ let pendingContract = null;     // 계약리스트 파싱 대기
 let vintageFilterType = 'all';   // 'all' | 'group' | 'category'
 let vintageFilterId   = '';      // 선택된 그룹ID or 카테고리ID
 let vintageFilterProd = '';      // 선택된 상품명 (카테고리/그룹 선택 후 세부 상품)
+// ── 관리팀 필터 상태
+let selectedMgmtTeam = '';       // '' = 전체, 그 외 = 특정 관리팀명
 // ── 결산자료 스토리지
 const DB_KEY = 'apl_months_v1';
 // ── 계약리스트 스토리지
@@ -631,6 +643,7 @@ async function init() {
 
     await refreshSidebarMonths();
     await augmentTrendFromStorage(); // IDB 결산자료로 TREND 누락 월 보완
+    await refreshMgmtTeamSelect();   // 관리팀 셀렉트 옵션 초기화
     await renderPage();
 
     // 3. 계약리스트 사전 로드 (백그라운드)
@@ -855,6 +868,7 @@ async function loadMonthData(yyyymm) {
   // 사이드바 활성 월 표시
   document.getElementById('sb-active-month').textContent = yyyymm.slice(0,4)+'년 '+parseInt(yyyymm.slice(4))+'월';
   await refreshSidebarMonths(yyyymm);
+  await refreshMgmtTeamSelect();  // 관리팀 옵션 갱신
   return true;
 }
 
@@ -924,6 +938,28 @@ async function goPage(page) {
   await renderPage();
 }
 
+// ==================== 관리팀 필터 ====================
+function onMgmtTeamFilter(value) {
+  selectedMgmtTeam = value;
+  renderPage();
+}
+window.onMgmtTeamFilter = onMgmtTeamFilter;
+
+// 사이드바 관리팀 셀렉트 옵션 갱신
+async function refreshMgmtTeamSelect() {
+  const sel = document.getElementById('sb-mgmt-select');
+  if (!sel) return;
+  const teams = await getUniqueMgmtTeams();
+  const cur = selectedMgmtTeam;
+  let html = '<option value="" style="background:#1e3a5f;color:#fff;">전체 관리팀</option>';
+  teams.forEach(t => {
+    html += '<option value="' + t + '" style="background:#1e3a5f;color:#fff;"'
+          + (t === cur ? ' selected' : '') + '>' + t + '</option>';
+  });
+  sel.innerHTML = html;
+  sel.value = cur;
+}
+
 async function renderPage() {
   const el = document.getElementById('main-content');
   destroyCharts();
@@ -938,20 +974,31 @@ async function renderPage() {
     </div>\`;
     return;
   }
-  switch(currentPage) {
-    case 'overview': renderOverview(el); break;
-    case 'balance':  renderBalance(el);  break;
-    case 'product':  renderProduct(el);  break;
-    case 'agent':    renderAgent(el);    break;
-    case 'overdue':        await renderOverdue(el);        break;
-    case 'overdue-change': await renderOverdueChange(el);  break;
-    case 'vintage':        await renderVintage(el);         break;
-    case 'realestate': await renderRealestate(el); break;
-    case 'trend':    renderTrend(el);    break;
-    case 'upload':    await renderUploadPage(el);    break;
-    case 'contract':  renderContractPage(el);  break;
-    case 'newloan':   renderNewLoan(el);        break;
-    case 'settings':  renderSettingsPage(el);  break;
+  // ── 관리팀 필터: LOAN.records를 임시 교체 (집계 함수들이 LOAN.records를 직접 참조하므로)
+  let _origRecords = null;
+  if (LOAN && selectedMgmtTeam) {
+    _origRecords = LOAN.records;
+    LOAN.records = filterByMgmtTeam(_origRecords);
+  }
+  try {
+    switch(currentPage) {
+      case 'overview': renderOverview(el); break;
+      case 'balance':  renderBalance(el);  break;
+      case 'product':  renderProduct(el);  break;
+      case 'agent':    renderAgent(el);    break;
+      case 'overdue':        await renderOverdue(el);        break;
+      case 'overdue-change': await renderOverdueChange(el);  break;
+      case 'vintage':        await renderVintage(el);         break;
+      case 'realestate': await renderRealestate(el); break;
+      case 'trend':    renderTrend(el);    break;
+      case 'upload':    await renderUploadPage(el);    break;
+      case 'contract':  renderContractPage(el);  break;
+      case 'newloan':   renderNewLoan(el);        break;
+      case 'settings':  renderSettingsPage(el);  break;
+    }
+  } finally {
+    // ── 원본 records 복원 (필터링 영구 적용 방지)
+    if (_origRecords !== null) LOAN.records = _origRecords;
   }
 }
 
@@ -1518,6 +1565,7 @@ function processContractFile(file) {
       const colCG = hIdx('소유비율합계');      // EM
       const colCH = hIdx('지분율대출원금합계'); // EN
       const colCtC = hIdx('계약구분');         // Q열 (신규/추가대출/재대출/만기연장(전환) 등)
+      const colMgmt = hIdx('관리팀');          // EJ열 (관리팀)
 
       if(colP<0||colAmt<0) throw new Error('상품명 또는 대출액 컬럼을 찾을 수 없습니다');
 
@@ -1543,6 +1591,7 @@ function processContractFile(file) {
           loanAmt:   isCollateral ? (amt+chVal) : 0,
           appraised: isCollateral ? (cfVal*cgVal/100) : 0,
           ct:  String(row[colCtC]||'').trim(),  // 계약구분 (신규/추가대출/재대출/만기연장(전환))
+          mgmt: String(row[colMgmt]||'').trim(),  // 관리팀 (EJ열)
         });
       }
 
@@ -1701,6 +1750,7 @@ function processFile(file) {
       const colDate = hIdx('계약일자'); // 계약일자 (D열) → 취급월(YYYYMM) 추출용
       const colExp  = hIdx('만기일자'); // 만기일자 (X열)
       const colUsed = hIdx('사용일수'); // 사용일수 (CY열)
+      const colMgmt = hIdx('관리팀');  // AI열 (관리팀)
 
       if (colP<0||colB<0) throw new Error('현재상품 또는 잔액 컬럼을 찾을 수 없습니다');
 
@@ -1775,6 +1825,7 @@ function processFile(file) {
           clt: String(row[colClt]|| '').trim(),
           gy:  String(row[colGy] || '').trim(),
           cd:  cdYm,  // 취급월 YYYYMM (계약일자 D열 → 빈티지 분석용)
+          mgmt: String(row[colMgmt] || '').trim(),  // 관리팀 (AI열)
         });
       }
 
@@ -1839,6 +1890,7 @@ async function saveUploadedData() {
 
   await refreshSidebarMonths(key);
   await augmentTrendFromStorage();
+  await refreshMgmtTeamSelect();  // 새 결산자료 저장 후 관리팀 옵션 갱신
   closeUploadModal();
   // 계약리스트와 동일하게: 모달만 닫고 현재 페이지(upload) 갱신 — overview로 이동하지 않음
   await renderUploadPage(document.getElementById('main-content'));
@@ -2816,7 +2868,7 @@ function renderNewLoan(el) {
     newLoanSelectedKey = keys[0];
   }
   const d    = contractDB[newLoanSelectedKey];
-  const allRecs = d.records || [];
+  const allRecs = filterByMgmtTeam(d.records || []);  // 관리팀 필터 적용
 
   // ── 만기연장(전환) 제외: 신규/추가대출/재대출만 집계
   // ct 필드가 없는 구버전 데이터는 전체 포함 (하위 호환)
@@ -3411,7 +3463,7 @@ async function renderOverdue(el) {
     const prevEntries = Object.values(db).filter(v => v && v.base_date && v.records && v.base_date.slice(0,7) < currYm);
     if (prevEntries.length > 0) {
       prevEntries.sort((a,b) => b.base_date.localeCompare(a.base_date));
-      prevAll = prevEntries[0].records;
+      prevAll = filterByMgmtTeam(prevEntries[0].records);  // 관리팀 필터 적용
     }
   }
 
@@ -3800,7 +3852,7 @@ async function renderOverdue(el) {
       // 날짜순 정렬된 월 목록 추출
       const mEntries = Object.entries(mdb)
         .filter(([,v])=>v&&v.records&&v.base_date)
-        .map(([,v])=>({label: v.base_date.slice(0,7).replace('-','년 ')+'월', recs: v.records, bd: v.base_date}))
+        .map(([,v])=>({label: v.base_date.slice(0,7).replace('-','년 ')+'월', recs: filterByMgmtTeam(v.records), bd: v.base_date}))
         .sort((a,b)=>a.bd.localeCompare(b.bd));
       if(mEntries.length>=1) {
         // 그룹 필터 함수 (현재 overdueChartGroup 기준)
@@ -3854,7 +3906,7 @@ async function renderOverdueChange(el) {
   const db = await getMonthsDB();
   const months = Object.entries(db)
     .filter(([,v]) => v && v.records && v.base_date)
-    .map(([k, v]) => ({ key: k, base_date: v.base_date, records: v.records }))
+    .map(([k, v]) => ({ key: k, base_date: v.base_date, records: filterByMgmtTeam(v.records) }))
     .sort((a,b) => a.base_date.localeCompare(b.base_date));
 
   const hasCno = months.length > 0 && months[0].records.length > 0 && months[0].records[0].cno !== undefined;
@@ -4317,6 +4369,40 @@ function calcRealestateStats(records, loanTypeName) {
 }
 
 // ==================== 페이지: 연체 빈티지 ====================
+// ── 관리팀 필터 헬퍼: records 배열에서 선택된 관리팀만 반환
+function filterByMgmtTeam(recs) {
+  if (!selectedMgmtTeam) return recs;
+  return recs.filter(r => r.mgmt === selectedMgmtTeam);
+}
+
+// ── 전체 저장된 월에서 관리팀 목록 추출 (사이드바 셀렉트용)
+async function getUniqueMgmtTeams() {
+  const teams = new Set();
+  // 현재 결산 LOAN
+  if (LOAN && LOAN.records) {
+    LOAN.records.forEach(r => { if (r.mgmt) teams.add(r.mgmt); });
+  }
+  // IDB 전체 월 결산
+  try {
+    const months = await getMonthsDB();
+    for (const snap of Object.values(months)) {
+      if (snap && snap.records) {
+        snap.records.forEach(r => { if (r.mgmt) teams.add(r.mgmt); });
+      }
+    }
+  } catch(e) {}
+  // 계약리스트 IDB
+  try {
+    const contracts = getContractDB();
+    for (const snap of Object.values(contracts)) {
+      if (snap && snap.records) {
+        snap.records.forEach(r => { if (r.mgmt) teams.add(r.mgmt); });
+      }
+    }
+  } catch(e) {}
+  return [...teams].sort();
+}
+
 // ── 빈티지 필터: records 배열을 현재 필터 설정으로 필터링
 function vintageFilterRecs(recs) {
   if (vintageFilterType === 'all') return recs;
@@ -4427,7 +4513,7 @@ async function renderVintage(el) {
 
     // 이 스냅샷에서 cd 필드가 있는 건들만 코호트별로 집계
     const snapMap = {};
-    vintageFilterRecs(snap.records).forEach(r => {
+    vintageFilterRecs(filterByMgmtTeam(snap.records)).forEach(r => {
       if (!r.cd || r.cd.length !== 6) return;
       if (!snapMap[r.cd]) snapMap[r.cd] = { bal:0, od10:0, od30:0 };
       const v = snapMap[r.cd];
@@ -4503,7 +4589,7 @@ async function renderVintage(el) {
     .map(k => {
       const e = db[k];
       if (!e || !e.records) return null;
-      const recs = vintageFilterRecs(e.records);
+      const recs = vintageFilterRecs(filterByMgmtTeam(e.records));
       const tot  = recs.reduce((s,r)=>s+(r.b||0),0);
       const od10 = recs.filter(r=>(r.d||0)>=10).reduce((s,r)=>s+(r.b||0),0);
       const od30 = recs.filter(r=>(r.d||0)>=30).reduce((s,r)=>s+(r.b||0),0);
@@ -4727,7 +4813,7 @@ async function renderRealestate(el) {
   const LT = { all:'전체 합산', loan:'담보론', loanShare:'담보론(지분대출)' };
   const loanTypeName = reSelLoanType === 'all' ? null : LT[reSelLoanType];
   const loanTypeLabel = LT[reSelLoanType] || '전체 합산';
-  const stats = calcRealestateStats(dataset.records, loanTypeName);
+  const stats = calcRealestateStats(filterByMgmtTeam(dataset.records), loanTypeName);
   const S = stats.summary;
   const totalBal = S.all.total.bal, totalCnt = S.all.total.cnt;
   const odBal    = S.od.total.bal,  odCnt    = S.od.total.cnt;
