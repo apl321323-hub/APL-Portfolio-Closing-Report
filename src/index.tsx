@@ -831,9 +831,7 @@ async function augmentTrendFromStorage() {
     console.log('[TREND 보완] ' + label + ' 추가 완료 (잔고 ' + (totalBal/100000000).toFixed(0) + '억, 담보 ' + (collAgg.bal/100000000).toFixed(0) + '억, 신용 ' + (creditAgg.bal/100000000).toFixed(0) + '억, ' + totalCnt + '건)');
   }
 
-  // ── 보완 후 TREND.months 기준으로 전체 시계열 재정렬 ──────────────────────
-  // label 형식: "YY.M월" (예: "25.1월", "26.10월")
-  // → 연도·월 숫자 추출 후 오름차순 정렬
+  // ── 보완 후 TREND 재정렬 ──────────────────────────────────────────────────
   function monthLabelToNum(m) {
     const mm = String(m).match(new RegExp('(\\d+)\\.(\\d+)'));
     if (!mm) return 0;
@@ -849,6 +847,7 @@ async function augmentTrendFromStorage() {
   TREND.total.new_loans = idx.map(i => TREND.total.new_loans[i]);
   TREND.total.repay     = idx.map(i => TREND.total.repay[i]);
   TREND.total.overdue   = idx.map(i => TREND.total.overdue[i]);
+
   if (TREND.products) {
     for (const tp of TREND.products) {
       if (tp.balance)   tp.balance   = idx.map(i => tp.balance[i]);
@@ -1714,7 +1713,7 @@ function processFile(file) {
       setProgress(30, '엑셀 파싱 중...');
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: true });
-      console.log('[DEBUG sheets]', wb.SheetNames);
+
       const ws = wb.Sheets[wb.SheetNames[0]];
       setProgress(60, '데이터 변환 중...');
 
@@ -1724,10 +1723,7 @@ function processFile(file) {
       const headers = rows[0];
       // 컬럼 인덱스 찾기
       const hIdx = (name) => headers.indexOf(name);
-      // ── DEBUG: 헤더 전체 출력 (계약일자 컬럼명 확인용) ──
-      console.log('[DEBUG headers]', JSON.stringify(headers));
-      console.log('[DEBUG colDate raw] 계약일자 idx=', hIdx('계약일자'), '/ 계약일 idx=', hIdx('계약일'));
-      // ── DEBUG END ──
+
       const colP   = hIdx('현재상품');  // H
       const colB   = hIdx('잔액');      // L
       const colR   = hIdx('정상이율'); // O
@@ -1799,16 +1795,7 @@ function processFile(file) {
             }
           }
         }
-        // ── DEBUG: 첫 5건 cdYm 출력 ──
-        if (records.length < 5) {
-          const rawVal = colDate >= 0 ? row[colDate] : 'NO_COL';
-          console.log('[DEBUG cdYm] row', records.length,
-            '| colDate=', colDate,
-            '| typeof raw=', typeof rawVal,
-            '| isDate=', rawVal instanceof Date,
-            '| raw=', rawVal,
-            '| cdYm=', cdYm);
-        }
+
         records.push({
           p:   pName,
           b:   b,
@@ -1896,8 +1883,38 @@ async function saveUploadedData() {
   await renderUploadPage(document.getElementById('main-content'));
 }
 
+// ==================== TREND 정렬 유틸 ====================
+// TREND.months 및 연동 배열을 날짜 오름차순으로 재정렬
+// label 형식: "YY.M월" (예: "25.1월", "26.10월")
+function sortTrendMonths() {
+  if (!TREND || !TREND.months || TREND.months.length === 0) return;
+  function lbl2num(m) {
+    const mm = String(m).match(new RegExp('(\\d+)\\.(\\d+)'));
+    if (!mm) return 0;
+    return parseInt(mm[1]) * 100 + parseInt(mm[2]);
+  }
+  const order = TREND.months.map((m, i) => ({ m, i }))
+    .sort((a, b) => lbl2num(a.m) - lbl2num(b.m));
+  const idx = order.map(o => o.i);
+  TREND.months           = idx.map(i => TREND.months[i]);
+  TREND.total.balance    = idx.map(i => TREND.total.balance[i]);
+  TREND.total.new_loans  = idx.map(i => TREND.total.new_loans[i]);
+  TREND.total.repay      = idx.map(i => TREND.total.repay[i]);
+  TREND.total.overdue    = idx.map(i => TREND.total.overdue[i]);
+  if (TREND.products) {
+    for (const tp of TREND.products) {
+      if (tp.balance)   tp.balance   = idx.map(i => tp.balance[i]);
+      if (tp.new_loans) tp.new_loans = idx.map(i => tp.new_loans[i]);
+      if (tp.repay)     tp.repay     = idx.map(i => tp.repay[i]);
+      if (tp.overdue)   tp.overdue   = idx.map(i => tp.overdue[i]);
+    }
+  }
+}
+
 // ==================== 페이지: 종합 개요 ====================
 function renderOverview(el) {
+  // 차트 렌더 전 TREND 정렬 보장 (augmentTrendFromStorage 이후 순서 뒤섞임 방지)
+  sortTrendMonths();
   const total = LOAN.records.reduce((s,r)=>s+r.b,0);
   const totalCnt = LOAN.records.length;
   const overdue30 = LOAN.records.filter(r=>r.d>30);
@@ -2006,6 +2023,7 @@ function renderOverview(el) {
     const pArr=Object.entries(pMap).sort((a,b)=>b[1].balance-a[1].balance).slice(0,15);
     mkBar('ov-bar',pArr.map(([p])=>p),[{label:'잔고',data:pArr.map(([,v])=>v.balance/100000000),backgroundColor:pArr.map(([p])=>getCategoryOfProduct(p).color+'cc')}],{extra:{scales:{y:{ticks:{callback:v=>v.toFixed(0)+'억'}}}}});
     if(TREND){
+
       // 기존 연체율 추이
       mkLine('ov-trend',TREND.months,[
         {label:'융자잔고(억)',data:TREND.total.balance.map(b=>b.amount),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true},
@@ -5350,6 +5368,7 @@ function renderTrend(el) {
     el.innerHTML='<div class="flex items-center justify-center h-64 text-gray-400">추이 데이터(data.json)가 없습니다</div>';
     return;
   }
+  sortTrendMonths(); // 월별 추이 페이지 진입 시에도 정렬 보장
   const tData=TREND.total;
   el.innerHTML=\`
 <div class="space-y-5">
