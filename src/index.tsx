@@ -389,6 +389,7 @@ let pendingContract = null;     // 계약리스트 파싱 대기
 // ── 빈티지 필터 상태
 let vintageFilterType = 'all';   // 'all' | 'group' | 'category'
 let vintageFilterId   = '';      // 선택된 그룹ID or 카테고리ID
+let vintageFilterProd = '';      // 선택된 상품명 (카테고리/그룹 선택 후 세부 상품)
 // ── 결산자료 스토리지
 const DB_KEY = 'apl_months_v1';
 // ── 계약리스트 스토리지
@@ -4302,6 +4303,10 @@ function vintageFilterRecs(recs) {
   if (vintageFilterType === 'all') return recs;
   const catsNow = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : DEFAULT_CATEGORIES;
   const grpsNow = (GROUPS     && GROUPS.length     > 0) ? GROUPS     : DEFAULT_GROUPS;
+  // 상품 단위 필터 (카테고리/그룹 필터 이후 세부 상품 선택)
+  if (vintageFilterProd) {
+    return recs.filter(r => r.p === vintageFilterProd);
+  }
   if (vintageFilterType === 'category') {
     const cat = catsNow.find(c => c.id === vintageFilterId);
     if (!cat) return recs;
@@ -4347,6 +4352,33 @@ async function renderVintage(el) {
     + '<optgroup label="── 상품 그룹">' + grpOptions + '</optgroup>'
     + '<optgroup label="── 상품 카테고리">' + catOptions + '</optgroup>'
     + '</select>';
+
+  // ── 상품 셀렉트 (카테고리/그룹 선택 시에만 표시)
+  let prodSelHtml = '';
+  if (vintageFilterType === 'category' || vintageFilterType === 'group') {
+    // 선택된 필터 범위 내 상품 목록 추출
+    let scopeProds = [];
+    if (vintageFilterType === 'category') {
+      const cat = catsNow.find(c => c.id === vintageFilterId);
+      if (cat) scopeProds = cat.products || [];
+    } else {
+      const grp = grpsNow.find(g => g.id === vintageFilterId);
+      if (grp) {
+        const catIds = new Set(grp.categoryIds || []);
+        scopeProds = catsNow.filter(c => catIds.has(c.id)).flatMap(c => c.products || []);
+      }
+    }
+    if (scopeProds.length > 0) {
+      const prodOpts = scopeProds.map(p =>
+        '<option value="' + p + '"' + (vintageFilterProd===p?' selected':'') + '>' + p + '</option>'
+      ).join('');
+      prodSelHtml = '<select id="vt-prod-sel" onchange="onVintageProdFilter(this.value)" '
+        + 'class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer">'
+        + '<option value=""' + (vintageFilterProd===''?' selected':'') + '>전체 상품</option>'
+        + prodOpts
+        + '</select>';
+    }
+  }
 
   // ── 필터 레이블 (현재 선택 표시용)
   let filterLabel = '전체';
@@ -4472,6 +4504,7 @@ async function renderVintage(el) {
     </div>
     <div class="flex items-center gap-2 flex-wrap">
       \${filterSel}
+      \${prodSelHtml}
       <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
         기준: \${baseDate || '결산자료 없음'}\${baseYm ? ' (' + allKeys.length + '개월 적재)' : ''}
       </span>
@@ -4618,7 +4651,7 @@ async function renderVintage(el) {
   }, 60);
 }
 
-// ── 빈티지 필터 변경 핸들러 (select onchange 호출)
+// ── 빈티지 필터 변경 핸들러
 function onVintageFilter(value) {
   if (value === 'all') {
     vintageFilterType = 'all';
@@ -4627,14 +4660,23 @@ function onVintageFilter(value) {
     const sep  = value.indexOf('__');
     if (sep === -1) { vintageFilterType = 'all'; vintageFilterId = ''; }
     else {
-      vintageFilterType = value.slice(0, sep);   // 'group' | 'category'
-      vintageFilterId   = value.slice(sep + 2);   // id 값
+      vintageFilterType = value.slice(0, sep);
+      vintageFilterId   = value.slice(sep + 2);
     }
   }
+  vintageFilterProd = '';  // 상위 필터 변경 시 상품 선택 초기화
   const el = document.getElementById('main-content');
   if (el) renderVintage(el);
 }
 window.onVintageFilter = onVintageFilter;
+
+// ── 상품 단위 필터 핸들러
+function onVintageProdFilter(value) {
+  vintageFilterProd = value;  // '' = 전체 상품, 그 외 = 특정 상품명
+  const el = document.getElementById('main-content');
+  if (el) renderVintage(el);
+}
+window.onVintageProdFilter = onVintageProdFilter;
 
 async function renderRealestate(el) {
   const db = await getMonthsDB();
