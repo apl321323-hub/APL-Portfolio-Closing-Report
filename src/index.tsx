@@ -77,13 +77,18 @@ app.delete('/api/db/months/:key', async (c) => {
   }
 })
 
-// ==================== Supabase sales 프록시 API ====================
-// GET /api/db/sales  → sales 테이블 전체 조회
-app.get('/api/db/sales', async (c) => {
+// ==================== Supabase 범용 KV 프록시 API ====================
+// 테이블: kv (key TEXT PK, data JSONB)
+// 모든 데이터(계약리스트·영업리스트·권한·설정 등)를 prefix:key 형태로 저장
+// 앞으로 새 기능 추가 시 이 API만 사용하면 자동으로 브라우저간 공유됨
+
+// GET /api/kv?prefix=xxx  → prefix로 시작하는 모든 키 조회
+app.get('/api/kv', async (c) => {
   try {
-    const res = await fetch(SUPA_URL + '/rest/v1/sales?select=key,data&order=key.desc', {
-      headers: SUPA_HEADERS
-    })
+    const prefix = c.req.query('prefix') || ''
+    const filter = prefix ? `key=like.${encodeURIComponent(prefix + '%')}` : ''
+    const url = SUPA_URL + '/rest/v1/kv?select=key,data&order=key.asc' + (filter ? '&' + filter : '')
+    const res = await fetch(url, { headers: SUPA_HEADERS })
     if (!res.ok) return c.json({ error: await res.text() }, 500)
     const rows = await res.json() as { key: string; data: unknown }[]
     const result: Record<string, unknown> = {}
@@ -94,13 +99,13 @@ app.get('/api/db/sales', async (c) => {
   }
 })
 
-// POST /api/db/sales  → upsert (키 단위)
-app.post('/api/db/sales', async (c) => {
+// PUT /api/kv  → upsert { key, data } 배열 또는 단일 { key, data }
+app.put('/api/kv', async (c) => {
   try {
-    const body = await c.req.json() as Record<string, unknown>
-    const rows = Object.entries(body).map(([key, data]) => ({ key, data }))
+    const body = await c.req.json() as { key: string; data: unknown } | { key: string; data: unknown }[]
+    const rows = Array.isArray(body) ? body : [body]
     if (rows.length === 0) return c.json({ ok: true })
-    const res = await fetch(SUPA_URL + '/rest/v1/sales', {
+    const res = await fetch(SUPA_URL + '/rest/v1/kv', {
       method: 'POST',
       headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows)
@@ -112,11 +117,11 @@ app.post('/api/db/sales', async (c) => {
   }
 })
 
-// DELETE /api/db/sales/:key  → 특정 키 삭제
-app.delete('/api/db/sales/:key', async (c) => {
+// DELETE /api/kv/:key  → 특정 키 삭제
+app.delete('/api/kv/:key', async (c) => {
   try {
     const key = c.req.param('key')
-    const res = await fetch(SUPA_URL + '/rest/v1/sales?key=eq.' + key, {
+    const res = await fetch(SUPA_URL + '/rest/v1/kv?key=eq.' + encodeURIComponent(key), {
       method: 'DELETE',
       headers: SUPA_HEADERS
     })
@@ -126,6 +131,7 @@ app.delete('/api/db/sales/:key', async (c) => {
     return c.json({ error: String(e) }, 500)
   }
 })
+
 app.get('/contract_202607.json', (c) => { return c.body("{\"base_date\":\"2026-07-31\",\"records\":[{\"p\":\"\ub808\uc774\ub514\ub860\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":48750000.0,\"appraised\":343100000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":119269000.0,\"appraised\":245000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":86160000.0,\"appraised\":140000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":130074000.0,\"appraised\":437500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":12000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":165180000.0,\"appraised\":440000000.0},{\"p\":\"OP\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":285430000.0,\"appraised\":472500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":23000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":125451438.0,\"appraised\":310000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":344069000.0,\"appraised\":595000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":79580000.0,\"appraised\":200500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":9000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-31\",\"loanAmt\":244970000.0,\"appraised\":378000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":129777000.0,\"appraised\":185000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":145667000.0,\"appraised\":480500000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":4000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":30000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":339470000.0,\"appraised\":530000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":100000000.0,\"r\":17.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":207278000.0,\"appraised\":335000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":630854000.0,\"appraised\":1112000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":247921000.0,\"appraised\":360000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":45887000.0,\"appraised\":182000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":193146000.0,\"appraised\":310000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":25000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":98980000.0,\"appraised\":155000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":389577000.0,\"appraised\":710000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":6500000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":64078000.0,\"appraised\":110000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":486232000.0,\"appraised\":820000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":25000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":180750000.0,\"appraised\":370000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":322910000.0,\"appraised\":505000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":79730000.0,\"appraised\":147500000.0},{\"p\":\"\ub808\uc774\ub514\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":247517000.0,\"appraised\":355000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":84839000.0,\"appraised\":213800000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":12000000.0,\"r\":18.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":81433006.0,\"appraised\":120000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-30\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":1000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":378670000.0,\"appraised\":535000000.0},{\"p\":\"OP\ub860\",\"amt\":12000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":12000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":89837000.0,\"appraised\":160000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":192170000.0,\"appraised\":535000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":250812000.0,\"appraised\":420000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":7000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":104300000.0,\"appraised\":222000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":11000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":134930832.0,\"appraised\":277900000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":105800000.0,\"appraised\":187300000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":15.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":184577000.0,\"appraised\":467000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":19963000.0,\"appraised\":60000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":355005000.0,\"appraised\":740000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":49810000.0,\"appraised\":101000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":195070000.0,\"appraised\":325000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":9902261.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":239057000.0,\"appraised\":360900000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":6000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":26600000.0,\"appraised\":54000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":27000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-29\",\"loanAmt\":65880000.0,\"appraised\":144100000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":12000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":78710000.0,\"appraised\":122500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":82900000.0,\"appraised\":137500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":1153430000.0,\"appraised\":1720000000.0},{\"p\":\"OP\ub860\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":356224000.0,\"appraised\":575000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":487410000.0,\"appraised\":785000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":90021000.0,\"appraised\":165000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":160000000.0,\"appraised\":320000000.0},{\"p\":\"OP\ub860\",\"amt\":4000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":91909000.0,\"appraised\":140000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":110166000.0,\"appraised\":270000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":283750000.0,\"appraised\":410000000.0},{\"p\":\"OP\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":108687000.0,\"appraised\":280500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":290390000.0,\"appraised\":415000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":54751000.0,\"appraised\":85000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-28\",\"loanAmt\":110893000.0,\"appraised\":205000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\ub77c\uc774\ud504\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":136007000.0,\"appraised\":386200000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":343880000.0,\"appraised\":535000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\ub77c\uc774\ud504\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":116007000.0,\"appraised\":386200000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":144680000.0,\"appraised\":245000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":222031000.0,\"appraised\":415000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":92540000.0,\"appraised\":139700000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":196530000.0,\"appraised\":260000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":139280000.0,\"appraised\":882000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":50000000.0,\"r\":15.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":97000000.0,\"appraised\":155000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":12908000.0,\"appraised\":102000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":91636000.0,\"appraised\":150000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":8176662.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":65920259.0,\"appraised\":95000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":9462740.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-27\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":11.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":325930000.0,\"appraised\":750000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":194167000.0,\"appraised\":320000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":145760000.0,\"appraised\":238400000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":107760000.0,\"appraised\":195000000.0},{\"p\":\"OP\ub860\",\"amt\":10000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":24000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":121720000.0,\"appraised\":175000000.0},{\"p\":\"\ud50c\ub7ec\uc2a4\ub860\",\"amt\":30000000.0,\"r\":18.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":304602000.0,\"appraised\":500000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":121380000.0,\"appraised\":194400000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":25000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":100395000.0,\"appraised\":192500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":88231000.0,\"appraised\":188000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":18240000.0,\"appraised\":53000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":344331000.0,\"appraised\":432500000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":116787000.0,\"appraised\":382500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":158562000.0,\"appraised\":292500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":264831000.0,\"appraised\":425000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":170000000.0,\"appraised\":489324750.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-24\",\"loanAmt\":198500000.0,\"appraised\":267500000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":140698000.0,\"appraised\":187500000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":174506000.0,\"appraised\":240000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":236231000.0,\"appraised\":320000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":222317000.0,\"appraised\":320000000.0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":62656700.0,\"appraised\":100000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":210720000.0,\"appraised\":336000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":8000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":143630000.0,\"appraised\":230000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":511645764.0,\"appraised\":1260000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":25000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":204581000.0,\"appraised\":322500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":89600000.0,\"appraised\":138000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":206269594.0,\"appraised\":512500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-23\",\"loanAmt\":107100000.0,\"appraised\":172500000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":18000000.0,\"r\":19.9,\"a\":\"\uc5d0\uc2a4\uc5e0\uc528\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud050\ube0c\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":25000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":167037000.0,\"appraised\":311400000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":120950000.0,\"appraised\":225000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":7000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":207037000.0,\"appraised\":415000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":182821000.0,\"appraised\":247500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":125160000.0,\"appraised\":199000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":201601000.0,\"appraised\":300000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":130035000.0,\"appraised\":380000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":121153000.0,\"appraised\":192700000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":200291000.0,\"appraised\":488000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":279243000.0,\"appraised\":452500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":184567000.0,\"appraised\":349000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":112679000.0,\"appraised\":202500000.0},{\"p\":\"OP\ub860\",\"amt\":1500000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":27500000.0,\"appraised\":174000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":82723000.0,\"appraised\":153900000.0},{\"p\":\"OP\ub860\",\"amt\":1500000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":209666000.0,\"appraised\":403200000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-22\",\"loanAmt\":116501000.0,\"appraised\":179000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":101800000.0,\"appraised\":167000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc5d0\uc2a4\uc5e0\uc528\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":22000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":247938556.0,\"appraised\":400000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":11000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":108190000.0,\"appraised\":317500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":8000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":72870918.0,\"appraised\":110000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":101170000.0,\"appraised\":167500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":205090000.0,\"appraised\":287500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":103120000.0,\"appraised\":162500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":171403000.0,\"appraised\":290000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":40000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":267216000.0,\"appraised\":450000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":8000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":12000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":138866000.0,\"appraised\":207500000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":12000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":6000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":265028000.0,\"appraised\":372500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":207860000.0,\"appraised\":335000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":90000000.0,\"r\":12.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":119870000.0,\"appraised\":230000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":305878000.0,\"appraised\":395000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":614602000.0,\"appraised\":1000000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":136702000.0,\"appraised\":255000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":4000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-21\",\"loanAmt\":78720000.0,\"appraised\":152000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":222222000.0,\"appraised\":677500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":8000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":57620000.0,\"appraised\":265000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":14000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud14c\uc77c\ub860\",\"amt\":7500000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":13000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":558359000.0,\"appraised\":850000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":75000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":140264000.0,\"appraised\":227500000.0},{\"p\":\"N\ub860\",\"amt\":16000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":284015000.0,\"appraised\":495000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":93761000.0,\"appraised\":177500000.0},{\"p\":\"\ub2e4\uc774\ub809\ud2b8\ub860(W)\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":13000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":87320000.0,\"appraised\":212200000.0},{\"p\":\"OP\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":48690000.0,\"appraised\":115000000.0},{\"p\":\"\ub2e4\uc774\ub809\ud2b8\ub860(W)\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":78812000.0,\"appraised\":207800000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":147860000.0,\"appraised\":216000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":120553000.0,\"appraised\":215000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-20\",\"loanAmt\":443996000.0,\"appraised\":680000000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud050\ube0c\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":449130000.0,\"appraised\":685000000.0},{\"p\":\"OP\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"N\ub860\",\"amt\":25000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":20000000.0,\"appraised\":50000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":30000000.0,\"r\":11.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":288110000.0,\"appraised\":892500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":133470000.0,\"appraised\":179000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":219766000.0,\"appraised\":330000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":25000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":385852000.0,\"appraised\":650000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":170000000.0,\"r\":12.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":170000000.0,\"appraised\":368330000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":19.0,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":180845940.0,\"appraised\":260000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":25833000.0,\"appraised\":55000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":57236176.0,\"r\":19.9,\"a\":\"\ub77c\uc774\ud504\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":143817176.0,\"appraised\":195000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":148764000.0,\"appraised\":326770000.0},{\"p\":\"\ud14c\uc77c\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":15.0,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":350662671.0,\"appraised\":540000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-16\",\"loanAmt\":109720000.0,\"appraised\":162500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":80000000.0,\"r\":9.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":282096000.0,\"appraised\":485000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":193040000.0,\"appraised\":300000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":19000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud14c\uc77c\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":300000000.0,\"r\":12.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":582443578.0,\"appraised\":940000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":432937000.0,\"appraised\":675000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":17.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub808\uc774\ub514\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":116950000.0,\"appraised\":207500000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":6000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":335300000.0,\"appraised\":485000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":52213000.0,\"appraised\":82500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":102335000.0,\"appraised\":160000000.0},{\"p\":\"\ub2e4\uc774\ub809\ud2b8\ub860(W)\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":81390000.0,\"appraised\":136000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-15\",\"loanAmt\":33220628.0,\"appraised\":99000000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":16000000.0,\"r\":17.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":8000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":183146000.0,\"appraised\":310000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":85530000.0,\"appraised\":130000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":12000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":289470000.0,\"appraised\":408000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":189132000.0,\"appraised\":297000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"N\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":316530000.0,\"appraised\":430000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":107900000.0,\"appraised\":287500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":221000000.0,\"appraised\":307500000.0},{\"p\":\"\ud050\ube0c\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":204015230.0,\"appraised\":555000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":175992000.0,\"appraised\":265000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":52710000.0,\"appraised\":92500000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":357000000.0,\"appraised\":490000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":20000000.0,\"appraised\":69000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":51869000.0,\"appraised\":126100000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":185360000.0,\"appraised\":290000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":265883699.0,\"appraised\":425000000.0},{\"p\":\"OP\ub860\",\"amt\":11000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":15000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-14\",\"loanAmt\":44850436.0,\"appraised\":103500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":9.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":420790000.0,\"appraised\":1175000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":337190000.0,\"appraised\":620000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":18000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":369574000.0,\"appraised\":560000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":10000000.0,\"appraised\":37000000.0},{\"p\":\"\ub2e4\uc774\ub809\ud2b8\ub860(W)\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":184894956.0,\"appraised\":443000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":88288500.0,\"appraised\":465000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":62703000.0,\"appraised\":115000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":198450000.0,\"appraised\":335000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":30000000.0,\"appraised\":95000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":177530000.0,\"appraised\":270000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":119458451.0,\"appraised\":180000000.0},{\"p\":\"OP\ub860\",\"amt\":22000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":25000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":37000000.0,\"r\":17.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":109930000.0,\"appraised\":245000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-13\",\"loanAmt\":30000000.0,\"appraised\":58000000.0},{\"p\":\"\ub808\uc774\ub514\ub860\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":239508000.0,\"appraised\":457000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":7000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"N\ub860(\ud558\uc774\ube0c\ub9ac\ub4dc)\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":9000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":59103356.0,\"appraised\":151000000.0},{\"p\":\"\ud14c\uc77c\ub860\",\"amt\":16000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":67000000.0,\"appraised\":119000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":247994000.0,\"appraised\":370000000.0},{\"p\":\"OP\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":254000000.0,\"appraised\":390000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":23000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":48770000.0,\"appraised\":70000000.0},{\"p\":\"\ud050\ube0c\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":165027000.0,\"appraised\":245000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":70000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":362812000.0,\"appraised\":855000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":10000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":40714121.0,\"appraised\":142500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":253236000.0,\"appraised\":480000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":18943330.0,\"r\":17.9,\"a\":\"\ub77c\uc774\ud504\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":208724835.0,\"appraised\":337000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":14221505.0,\"r\":17.9,\"a\":\"\ub77c\uc774\ud504\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":208724835.0,\"appraised\":337000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":11000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":4000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":146701000.0,\"appraised\":312300000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":12000000.0,\"r\":16.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-10\",\"loanAmt\":87066000.0,\"appraised\":140000000.0},{\"p\":\"OP\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":40000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":69760000.0,\"appraised\":155000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":77984000.0,\"appraised\":152500000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":119070000.0,\"appraised\":170000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":90387000.0,\"appraised\":130000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":2000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":266764000.0,\"appraised\":360000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":51770000.0,\"appraised\":100000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":141440000.0,\"appraised\":225000000.0},{\"p\":\"N\ub860\",\"amt\":23000000.0,\"r\":18.9,\"a\":\"\uc5d0\uc2a4\uc5e0\uc528\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":264740000.0,\"appraised\":482000000.0},{\"p\":\"N\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":84380000.0,\"appraised\":181900000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":40200000.0,\"appraised\":75000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":4000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-09\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":7000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":19.5,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":114740000.0,\"appraised\":167500000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":30000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":100590000.0,\"appraised\":235000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":15000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":240425000.0,\"appraised\":365000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":12000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":232502725.0,\"appraised\":595800000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":6000000.0,\"r\":19.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":36000000.0,\"appraised\":56000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":160000000.0,\"appraised\":392500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":412730000.0,\"appraised\":605000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":47997000.0,\"appraised\":112000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":55000000.0,\"r\":12.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":152516000.0,\"appraised\":260000000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":11.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":364660000.0,\"appraised\":750000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":12000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":109180000.0,\"appraised\":188000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":187850000.0,\"appraised\":330000000.0},{\"p\":\"OP\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":19.0,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":104449209.0,\"appraised\":167500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uace0\uac1d\ucd94\ucc9c\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":381896000.0,\"appraised\":555000000.0},{\"p\":\"N\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":20000000.0,\"appraised\":47800000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":7000000.0,\"r\":16.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":140208000.0,\"appraised\":200000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"CALL\uc778\uc785\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":388390000.0,\"appraised\":495000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":285650000.0,\"appraised\":375000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":255800000.0,\"appraised\":420000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":27000000.0,\"r\":16.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-08\",\"loanAmt\":170580000.0,\"appraised\":489194850.0},{\"p\":\"N\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":4000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":133514000.0,\"appraised\":252500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":25000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":55186000.0,\"appraised\":105000000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":149000000.0,\"appraised\":334900000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":15000000.0,\"r\":19.5,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":353980000.0,\"appraised\":500000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":18000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":321000000.0,\"appraised\":770000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":8000000.0,\"r\":19.5,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":56910000.0,\"appraised\":114600000.0},{\"p\":\"\ud14c\uc77c\ub860\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":181178000.0,\"appraised\":277500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":13.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":403783000.0,\"appraised\":675000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":18000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":14000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":133523000.0,\"appraised\":257400000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":237922753.0,\"appraised\":595000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":8000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":29030000.0,\"appraised\":82250000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":12000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":40000000.0,\"r\":14.9,\"a\":\"\uace0\uac1d\ucd94\ucc9c\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":111067000.0,\"appraised\":212500000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-07\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":153990000.0,\"appraised\":365000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":14000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":13000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":15.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":149190000.0,\"appraised\":355000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":103190000.0,\"appraised\":202000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":173830000.0,\"appraised\":255000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":2000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":6000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":22050000.0,\"appraised\":38000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":204697000.0,\"appraised\":565000000.0},{\"p\":\"OP\ub860\",\"amt\":5000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":15.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":150724000.0,\"appraised\":271000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":18000000.0,\"r\":19.9,\"a\":\"\uc5d0\uc2a4\uc5e0\uc528\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":109120000.0,\"appraised\":165000000.0},{\"p\":\"N\ub860\",\"amt\":30000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":1000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":475899000.0,\"appraised\":690000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":85204000.0,\"appraised\":142500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\ud50c\ub7ec\uc2a4\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":316842000.0,\"appraised\":400000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":262142000.0,\"appraised\":447500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":194460000.0,\"appraised\":305000000.0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":10.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":329774085.0,\"appraised\":535000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-06\",\"loanAmt\":321590000.0,\"appraised\":550000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":76970000.0,\"appraised\":117000000.0},{\"p\":\"OP\ub860\",\"amt\":2000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2e4\uc774\ub809\ud2b8\ub860(W)\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":13000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":11000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":153337000.0,\"appraised\":371500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":108770000.0,\"appraised\":160000000.0},{\"p\":\"\ub2e4\uc774\ub809\ud2b8\ub860(W)\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":30000000.0,\"r\":12.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":166140500.0,\"appraised\":290000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":54407000.0,\"appraised\":85000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":363407685.0,\"appraised\":570000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":30000000.0,\"appraised\":100000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":11.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":354660000.0,\"appraised\":750000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":89926000.0,\"appraised\":1282050000.0},{\"p\":\"N\ub860(\ud558\uc774\ube0c\ub9ac\ub4dc)\",\"amt\":5000000.0,\"r\":19.9,\"a\":\"\uc0c1\uc0c1\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":5000000.0,\"r\":18.9,\"a\":\"\uc5d0\uc2a4\uc5e0\uc528\ub300\ubd80\uc911\uac1c\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":438181000.0,\"appraised\":735000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":57570000.0,\"appraised\":100000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":61210000.0,\"appraised\":155700000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":24000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":102800000.0,\"appraised\":172500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":20000000.0,\"r\":16.9,\"a\":\"\ud540\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-03\",\"loanAmt\":362192000.0,\"appraised\":542500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":73800000.0,\"appraised\":173000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":7000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":172850000.0,\"appraised\":344000000.0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":263790000.0,\"appraised\":420000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":285830000.0,\"appraised\":450000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":107340000.0,\"appraised\":167500000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":7000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":64860000.0,\"appraised\":100000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":40000000.0,\"r\":14.9,\"a\":\"\uc54c\ub2e4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":139610000.0,\"appraised\":345000000.0},{\"p\":\"\ub2f4\ubcf4\ub860(\uc9c0\ubd84\ub300\ucd9c)\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":190803520.68,\"appraised\":516669250.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":150280000.0,\"appraised\":215000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":30000000.0,\"appraised\":146500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":20000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":970000000.0,\"appraised\":1675000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":30000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":243917000.0,\"appraised\":495000000.0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":109660000.0,\"appraised\":170000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":100000000.0,\"r\":10.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":100000000.0,\"appraised\":222500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":41171089.0,\"r\":17.5,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":151167089.0,\"appraised\":222500000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":30000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":95160000.0,\"appraised\":290000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":14.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":131500000.0,\"appraised\":240000000.0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":10000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":257300000.0,\"appraised\":526400000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":15.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-02\",\"loanAmt\":346630000.0,\"appraised\":570000000.0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":4000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":277090000.0,\"appraised\":370000000.0},{\"p\":\"OP\ub860\",\"amt\":7000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":20000000.0,\"r\":19.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc2a4\ud0c0\ub860\",\"amt\":12000000.0,\"r\":19.9,\"a\":\"\uc624\ucf00\uc774\ub2e4\uc774\ub809\ud2b8\ub300\ubd80\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":5441020.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":8000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":5059989.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":10000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":14.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":105500092.0,\"appraised\":254000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":25000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":101431000.0,\"appraised\":173000000.0},{\"p\":\"OP\ub860\",\"amt\":3000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":20000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":129503907.0,\"appraised\":244000000.0},{\"p\":\"\ub2f4\ubcf4\ub860\",\"amt\":10000000.0,\"r\":16.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":378805000.0,\"appraised\":590000000.0},{\"p\":\"OP\ub860\",\"amt\":1000000.0,\"r\":19.5,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":15000000.0,\"r\":19.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22c\ub860\",\"amt\":11000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":1000000.0,\"r\":17.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"OP\ub860\",\"amt\":11000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\uc624\ud22cN\ub860\",\"amt\":1000000.0,\"r\":18.9,\"a\":\"\uc6f0\ucef4\ud50c\ub7ab\ud3fc\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":0,\"appraised\":0},{\"p\":\"\ud1a0\ub9c8\ud1a0\ud1a0\ud0c8\ub860\",\"amt\":15000000.0,\"r\":16.9,\"a\":\"\ubcf8\uc0ac\uc601\uc5c5\",\"d\":0,\"dt\":\"2026-07-01\",\"loanAmt\":224674486.0,\"appraised\":340000000.0}],\"count\":493,\"uploaded_at\":\"2026. 08. 10.\"}", 200, {'Content-Type': 'application/json; charset=utf-8'}); })
 
 app.get('/', (c) => {
@@ -749,6 +755,91 @@ let settingsAgentTab = 'categories';
 const AUTH_USERS_KEY  = 'apl_auth_users_v1';
 const AUTH_IP_KEY     = 'apl_auth_ip_v1';
 
+// ==================== supaKV: 범용 Supabase KV 헬퍼 ====================
+// 모든 데이터(계약/영업/권한/IP/관리점)를 Supabase kv 테이블에 저장.
+// 새 기능 추가 시 별도 API 없이 바로 supaKV.get/set 사용 → 자동으로 브라우저간 공유됨.
+// kv 테이블 구조: key TEXT PK, data JSONB
+const supaKV = (() => {
+  const _cache = {};          // { 'prefix:key': value }
+  const _loaded = new Set();  // 이미 getAll() 로드한 prefix
+
+  async function getAll(prefix) {
+    if (_loaded.has(prefix)) {
+      // 캐시에서 prefix에 해당하는 항목 반환
+      const result = {};
+      for (const [k, v] of Object.entries(_cache)) {
+        if (k.startsWith(prefix + ':') || k === prefix) result[k] = v;
+      }
+      return result;
+    }
+    try {
+      const res = await fetch('/api/kv?prefix=' + encodeURIComponent(prefix));
+      if (res.ok) {
+        const rows = await res.json(); // { 'prefix:key': data, ... }
+        for (const [k, v] of Object.entries(rows)) _cache[k] = v;
+        _loaded.add(prefix);
+        return rows;
+      }
+    } catch(e) { console.warn('[supaKV.getAll] 실패:', e); }
+    // 폴백: localStorage
+    _loaded.add(prefix);
+    return {};
+  }
+
+  async function get(key, defaultVal) {
+    if (_cache[key] !== undefined) return _cache[key];
+    const prefix = key.includes(':') ? key.split(':')[0] : key;
+    if (!_loaded.has(prefix)) await getAll(prefix);
+    return _cache[key] !== undefined ? _cache[key] : defaultVal;
+  }
+
+  async function set(key, value) {
+    _cache[key] = value;
+    try {
+      const res = await fetch('/api/kv', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, data: value })
+      });
+      if (!res.ok) console.error('[supaKV.set] 저장 실패:', await res.text());
+    } catch(e) { console.error('[supaKV.set] 네트워크 오류:', e); }
+  }
+
+  async function setMany(items) {
+    // items: [ { key, data }, ... ]
+    for (const { key, data } of items) _cache[key] = data;
+    try {
+      const res = await fetch('/api/kv', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(items)
+      });
+      if (!res.ok) console.error('[supaKV.setMany] 저장 실패:', await res.text());
+    } catch(e) { console.error('[supaKV.setMany] 네트워크 오류:', e); }
+  }
+
+  async function del(key) {
+    delete _cache[key];
+    try {
+      const res = await fetch('/api/kv/' + encodeURIComponent(key), { method: 'DELETE' });
+      if (!res.ok) console.error('[supaKV.del] 삭제 실패:', await res.text());
+    } catch(e) { console.error('[supaKV.del] 네트워크 오류:', e); }
+  }
+
+  function invalidate(prefix) {
+    _loaded.delete(prefix);
+    for (const k of Object.keys(_cache)) {
+      if (k.startsWith(prefix + ':') || k === prefix) delete _cache[k];
+    }
+  }
+
+  function getCached(key, defaultVal) {
+    return _cache[key] !== undefined ? _cache[key] : defaultVal;
+  }
+
+  return { getAll, get, set, setMany, del, invalidate, getCached, _cache, _loaded };
+})();
+
 // 메뉴 목록 (page 키 = data-page 값과 동일)
 const MENU_LIST = [
   { page:'overview',       label:'종합 개요' },
@@ -786,19 +877,48 @@ function defaultAuthIP() {
   return { enabled: false, list: [] };
 }
 
-function loadAuthUsers() {
-  try { return JSON.parse(localStorage.getItem(AUTH_USERS_KEY)) || defaultAuthUsers(); }
-  catch(_) { return defaultAuthUsers(); }
+// auth:users / auth:ip → supaKV 기반 (브라우저간 공유)
+// ※ 로그인 검증은 동기 호출이 필요한 경우가 있어 캐시 우선 + 비동기 프리로드 병행
+let _authUsersCache = null;
+let _authIPCache = null;
+
+async function loadAuthUsersAsync() {
+  const val = await supaKV.get('auth:users', null);
+  _authUsersCache = val || defaultAuthUsers();
+  return _authUsersCache;
 }
-function saveAuthUsers(users) {
-  localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
+function loadAuthUsers() {
+  if (_authUsersCache) return _authUsersCache;
+  // 동기 폴백: localStorage (첫 로드 전 한 번만)
+  try {
+    const s = localStorage.getItem(AUTH_USERS_KEY);
+    if (s) { _authUsersCache = JSON.parse(s); return _authUsersCache; }
+  } catch(_) {}
+  return defaultAuthUsers();
+}
+async function saveAuthUsers(users) {
+  _authUsersCache = users;
+  localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users)); // 동기 폴백 갱신
+  await supaKV.set('auth:users', users);
+}
+
+async function loadAuthIPAsync() {
+  const val = await supaKV.get('auth:ip', null);
+  _authIPCache = val || defaultAuthIP();
+  return _authIPCache;
 }
 function loadAuthIP() {
-  try { return JSON.parse(localStorage.getItem(AUTH_IP_KEY)) || defaultAuthIP(); }
-  catch(_) { return defaultAuthIP(); }
+  if (_authIPCache) return _authIPCache;
+  try {
+    const s = localStorage.getItem(AUTH_IP_KEY);
+    if (s) { _authIPCache = JSON.parse(s); return _authIPCache; }
+  } catch(_) {}
+  return defaultAuthIP();
 }
-function saveAuthIP(ipData) {
-  localStorage.setItem(AUTH_IP_KEY, JSON.stringify(ipData));
+async function saveAuthIP(ipData) {
+  _authIPCache = ipData;
+  localStorage.setItem(AUTH_IP_KEY, JSON.stringify(ipData)); // 동기 폴백 갱신
+  await supaKV.set('auth:ip', ipData);
 }
 
 // ==================== Supabase DB 헬퍼 (IndexedDB 대체) ====================
@@ -993,7 +1113,7 @@ async function preloadContractFiles() {
       console.warn('[계약리스트] ' + item.key + ' 로드 실패:', e);
     }
   }
-  if (changed) saveContractDB(db);
+  if (changed) await saveContractDB(db);
 }
 
 async function init() {
@@ -1040,19 +1160,23 @@ async function init() {
     await refreshSidebarMonths();
     await augmentTrendFromStorage(); // IDB 결산자료로 TREND 누락 월 보완
     await refreshMgmtTeamSelect();   // 관리팀 셀렉트 옵션 초기화
-    await renderPage();
 
-    // 3. 계약리스트 사전 로드 (백그라운드)
-    preloadContractFiles().then(() => {
+    // 2-b. supaKV 데이터 프리로드 (계약/영업/권한/관리점) — 백그라운드
+    loadContractCache().then(() => {
       const badge = document.getElementById('sb-contract-count');
-      if (badge) badge.textContent = Object.keys(getContractDB()).length;
+      if (badge) badge.textContent = String(Object.keys(getContractDB()).length || '');
     });
-    // 4. 영업리스트 배지 초기화 (Supabase에서 로드 후 카운트)
-    getSalesDB().then(db => {
+    getSalesDB().then(() => {
       const keys = getSalesKeys();
       const salesBadge = document.getElementById('sb-sales-count');
       if (salesBadge) salesBadge.textContent = keys.length > 0 ? String(keys.length) : '';
     });
+    // auth 캐시 프리로드 (첫 권한 설정 페이지 진입 전에 미리 로드)
+    loadAuthUsersAsync();
+    loadAuthIPAsync();
+    loadBranchStaffAsync();
+
+    await renderPage();
   } catch(e) {
     console.error('[init] 초기화 실패:', e);
     const mc = document.getElementById('main-content');
@@ -1722,12 +1846,54 @@ async function renderUploadPage(el) {
   const usageLabel = document.getElementById('idb-usage-label');
   if (usageLabel) usageLabel.textContent = '현재 사용: ' + usedKB + 'KB (' + usedMB + 'MB)';
 }
-// ==================== 계약리스트 스토리지 ====================
+// ==================== 계약리스트 스토리지 → supaKV (contract:YYYYMM) ====================
+// 계약리스트 전체를 인메모리에 캐시, 변경 시 supaKV.set으로 자동 공유
+let _contractCache = null;
+let _contractCacheLoaded = false;
+
+async function loadContractCache() {
+  if (_contractCacheLoaded) return;
+  const rows = await supaKV.getAll('contract');
+  // rows = { 'contract:202501': { records:[...] }, ... }
+  _contractCache = {};
+  for (const [k, v] of Object.entries(rows)) {
+    const month = k.replace('contract:', '');
+    _contractCache[month] = v;
+  }
+  // 기존 localStorage 데이터 있으면 1회 마이그레이션
+  if (Object.keys(_contractCache).length === 0) {
+    try {
+      const raw = localStorage.getItem(CONTRACT_DB_KEY);
+      if (raw) {
+        const old = JSON.parse(raw);
+        if (old && Object.keys(old).length > 0) {
+          _contractCache = old;
+          const items = Object.entries(old).map(([k,v]) => ({ key:'contract:'+k, data:v }));
+          await supaKV.setMany(items);
+          localStorage.removeItem(CONTRACT_DB_KEY);
+          console.log('[계약리스트] localStorage → Supabase 마이그레이션 완료 (' + items.length + '개월)');
+        }
+      }
+    } catch(e) { console.warn('[계약리스트] 마이그레이션 실패:', e); }
+  }
+  _contractCacheLoaded = true;
+}
+
 function getContractDB() {
+  if (_contractCacheLoaded && _contractCache) return _contractCache;
+  // 동기 폴백: localStorage
   try { return JSON.parse(localStorage.getItem(CONTRACT_DB_KEY) || '{}'); } catch(e){ return {}; }
 }
-function saveContractDB(db) {
-  localStorage.setItem(CONTRACT_DB_KEY, JSON.stringify(db));
+async function saveContractDB(db, key) {
+  _contractCache = db;
+  _contractCacheLoaded = true;
+  try { localStorage.setItem(CONTRACT_DB_KEY, JSON.stringify(db)); } catch(e){}
+  if (key) {
+    await supaKV.set('contract:' + key, db[key]);
+  } else {
+    const items = Object.entries(db).map(([k,v]) => ({ key:'contract:'+k, data:v }));
+    if (items.length > 0) await supaKV.setMany(items);
+  }
 }
 function getContractKeys() {
   return Object.keys(getContractDB()).sort().reverse();
@@ -1893,12 +2059,13 @@ function showContractDetail(yyyymm, d) {
 </div>\`;
 }
 
-function deleteContract(yyyymm) {
+async function deleteContract(yyyymm) {
   const y = yyyymm.slice(0,4), mo = parseInt(yyyymm.slice(4));
   if(!confirm(\`\${y}년 \${mo}월 계약리스트를 삭제하시겠습니까?\`)) return;
   const db = getContractDB();
   delete db[yyyymm];
-  saveContractDB(db);
+  await supaKV.del('contract:' + yyyymm);
+  if (_contractCache) delete _contractCache[yyyymm];
   renderContractPage(document.getElementById('main-content'));
 }
 
@@ -2037,17 +2204,17 @@ function processContractFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
-function saveContractData() {
+async function saveContractData() {
   if(!pendingContract) return;
   const y  = document.getElementById('contract-year').value;
   const mo = document.getElementById('contract-month').value;
   const key = y+mo;
   const db = getContractDB();
   db[key] = pendingContract;
-  saveContractDB(db);
+  await saveContractDB(db, key);
   // 사이드바 배지 갱신
   const badge = document.getElementById('sb-contract-count');
-  if(badge) badge.textContent = Object.keys(db).length;
+  if(badge) badge.textContent = String(Object.keys(db).length);
   closeContractModal();
   renderContractPage(document.getElementById('main-content'));
 }
@@ -2068,68 +2235,97 @@ async function deleteMonth(yyyymm) {
   await renderUploadPage(document.getElementById('main-content'));
 }
 
-// ==================== 영업리스트(접수현황) 스토리지 — Supabase 기반 ====================
-// months와 동일한 패턴: 인메모리 캐시 + Supabase /api/db/sales 프록시
+// ==================== 영업리스트(접수현황) 스토리지 → supaKV (sales:YYYYMM) ====================
 let _salesCache = null;
 let _salesCacheLoaded = false;
 
-function invalidateSalesCache() { _salesCache = null; _salesCacheLoaded = false; }
+function invalidateSalesCache() {
+  _salesCache = null;
+  _salesCacheLoaded = false;
+  supaKV.invalidate('sales');
+}
 
 async function getSalesDB() {
-  if (_salesCacheLoaded) return _salesCache;
-  try {
-    const res = await fetch('/api/db/sales');
-    if (res.ok) {
-      _salesCache = await res.json();
-      _salesCacheLoaded = true;
-      // localStorage 로컬 캐시도 갱신
-      try { localStorage.setItem(SALES_DB_KEY, JSON.stringify(_salesCache)); } catch(e){}
-      return _salesCache;
-    }
-  } catch(e) { console.warn('[getSalesDB] Supabase 조회 실패, 로컬 폴백:', e); }
-  // 폴백: localStorage
-  try { _salesCache = JSON.parse(localStorage.getItem(SALES_DB_KEY) || '{}'); }
-  catch(e) { _salesCache = {}; }
+  if (_salesCacheLoaded && _salesCache) return _salesCache;
+  const rows = await supaKV.getAll('sales');
+  // rows = { 'sales:202501': { records:[...], ... }, ... }
+  _salesCache = {};
+  for (const [k, v] of Object.entries(rows)) {
+    const month = k.replace('sales:', '');
+    _salesCache[month] = v;
+  }
+  // 기존 localStorage 데이터 1회 마이그레이션
+  if (Object.keys(_salesCache).length === 0) {
+    try {
+      const raw = localStorage.getItem(SALES_DB_KEY);
+      if (raw) {
+        const old = JSON.parse(raw);
+        if (old && Object.keys(old).length > 0) {
+          _salesCache = old;
+          const items = Object.entries(old).map(([k,v]) => ({ key:'sales:'+k, data:v }));
+          await supaKV.setMany(items);
+          localStorage.removeItem(SALES_DB_KEY);
+          console.log('[영업리스트] localStorage → Supabase 마이그레이션 완료 (' + items.length + '개월)');
+        }
+      }
+    } catch(e) { console.warn('[영업리스트] 마이그레이션 실패:', e); }
+  }
   _salesCacheLoaded = true;
   return _salesCache;
 }
 
 async function saveSalesDB(db, key) {
-  // 캐시 즉시 반영
   _salesCache = db;
   _salesCacheLoaded = true;
-  try { localStorage.setItem(SALES_DB_KEY, JSON.stringify(db)); } catch(e){}
-  // Supabase upsert (해당 key만)
-  try {
-    const payload = key ? { [key]: db[key] } : db;
-    const res = await fetch('/api/db/sales', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) console.error('[saveSalesDB] Supabase 저장 실패:', await res.text());
-  } catch(e) { console.error('[saveSalesDB] 네트워크 오류:', e); }
+  if (key) {
+    await supaKV.set('sales:' + key, db[key]);
+  } else {
+    const items = Object.entries(db).map(([k,v]) => ({ key:'sales:'+k, data:v }));
+    if (items.length > 0) await supaKV.setMany(items);
+  }
 }
 
 function getSalesKeys() {
-  // 동기 버전 — 캐시 기준 (캐시가 없으면 localStorage 폴백)
-  let db = _salesCache;
-  if (!db) {
-    try { db = JSON.parse(localStorage.getItem(SALES_DB_KEY) || '{}'); } catch(e) { db = {}; }
-  }
+  // 동기 버전 — 캐시 기준
+  const db = _salesCache || {};
   return Object.keys(db).filter(k => db[k] && db[k].records).sort().reverse();
 }
 
-// ── 관리점 직원명단 스토리지
+// ── 관리점 직원명단 스토리지 → supaKV (branch_staff key)
+let _branchStaffCache = null;
+
+async function loadBranchStaffAsync() {
+  const val = await supaKV.get('branch_staff', null);
+  if (val !== null) {
+    _branchStaffCache = val;
+  } else {
+    // localStorage 마이그레이션
+    try {
+      const s = localStorage.getItem(BRANCH_STAFF_KEY);
+      if (s) {
+        _branchStaffCache = JSON.parse(s);
+        await supaKV.set('branch_staff', _branchStaffCache);
+        localStorage.removeItem(BRANCH_STAFF_KEY);
+        console.log('[관리점] localStorage → Supabase 마이그레이션 완료');
+      } else {
+        _branchStaffCache = [];
+      }
+    } catch(e) { _branchStaffCache = []; }
+  }
+  return _branchStaffCache;
+}
 function loadBranchStaff() {
+  if (_branchStaffCache !== null) return _branchStaffCache;
+  // 동기 폴백: localStorage (캐시 미로드 시)
   try {
     const s = localStorage.getItem(BRANCH_STAFF_KEY);
     return s ? JSON.parse(s) : [];
-    // 형태: [ { branch:'본점', names:['김지선','이주아','정주하'] }, ... ]
   } catch(e){ return []; }
 }
-function saveBranchStaff(list) {
-  localStorage.setItem(BRANCH_STAFF_KEY, JSON.stringify(list));
+async function saveBranchStaff(list) {
+  _branchStaffCache = list;
+  localStorage.setItem(BRANCH_STAFF_KEY, JSON.stringify(list)); // 동기 폴백 갱신
+  await supaKV.set('branch_staff', list);
 }
 // 심사자명 → 관리점 조회
 function getBranchOfReviewer(name) {
@@ -2445,16 +2641,10 @@ async function _renderSalesPageAsync(el) {
 async function deleteSales(key) {
   const y = key.slice(0,4), mo = parseInt(key.slice(4));
   if (!confirm(\`\${y}년 \${mo}월 영업리스트를 삭제하시겠습니까?\`)) return;
-  // Supabase DELETE
-  try {
-    const res = await fetch('/api/db/sales/' + key, { method: 'DELETE' });
-    if (!res.ok) console.error('[deleteSales] 삭제 실패:', await res.text());
-  } catch(e) { console.error('[deleteSales] 네트워크 오류:', e); }
-  // 캐시에서도 제거
+  await supaKV.del('sales:' + key);
   const db = await getSalesDB();
   delete db[key];
   _salesCache = db;
-  try { localStorage.setItem(SALES_DB_KEY, JSON.stringify(db)); } catch(e){}
   if (window._salesSelectedKey === key) window._salesSelectedKey = null;
   renderSalesPage(document.getElementById('main-content'));
 }
@@ -2630,8 +2820,8 @@ function renderBranchStaffModal() {
   const container = document.getElementById('branch-staff-list');
   if (!container) return;
 
-  // 영업리스트에서 심사자 목록 추출 (캐시 우선, 없으면 localStorage)
-  const rawDb = _salesCache || (() => { try { return JSON.parse(localStorage.getItem(SALES_DB_KEY)||'{}'); } catch(e){ return {}; } })();
+  // 영업리스트에서 심사자 목록 추출 (캐시 기준)
+  const rawDb = _salesCache || {};
   const allReviewers = new Set();
   Object.values(rawDb).forEach(snap => {
     (snap.records || []).forEach(r => { if (r.reviewer) allReviewers.add(r.reviewer); });
@@ -2679,25 +2869,25 @@ function renderBranchStaffModal() {
   container.innerHTML = html;
 }
 
-// 관리점 명단 조작 함수들 (전역)
-window._bsUpdateBranch = function(bi, val) {
+// 관리점 명단 조작 함수들 (전역) — saveBranchStaff async이므로 await 처리
+window._bsUpdateBranch = async function(bi, val) {
   const list = loadBranchStaff();
   if (list[bi]) list[bi].branch = val;
-  saveBranchStaff(list);
+  await saveBranchStaff(list);
 };
-window._bsRemoveBranch = function(bi) {
+window._bsRemoveBranch = async function(bi) {
   const list = loadBranchStaff();
   list.splice(bi, 1);
-  saveBranchStaff(list);
+  await saveBranchStaff(list);
   renderBranchStaffModal();
 };
-window._bsRemoveName = function(bi, ni) {
+window._bsRemoveName = async function(bi, ni) {
   const list = loadBranchStaff();
   if (list[bi]) list[bi].names.splice(ni, 1);
-  saveBranchStaff(list);
+  await saveBranchStaff(list);
   renderBranchStaffModal();
 };
-window._bsAddName = function(bi) {
+window._bsAddName = async function(bi) {
   const sel = document.getElementById('bs-add-select-' + bi);
   if (!sel) return;
   let name = sel.value;
@@ -2715,17 +2905,17 @@ window._bsAddName = function(bi) {
   list.forEach((b, i) => { if (i !== bi) b.names = (b.names||[]).filter(n=>n!==name); });
   if (!list[bi].names) list[bi].names = [];
   list[bi].names.push(name);
-  saveBranchStaff(list);
+  await saveBranchStaff(list);
   renderBranchStaffModal();
 };
-window._bsAddBranch = function() {
+window._bsAddBranch = async function() {
   const input = document.getElementById('bs-new-branch-input');
   const name = input ? input.value.trim() : '';
   if (!name) { alert('관리점명을 입력하세요'); return; }
   const list = loadBranchStaff();
   if (list.some(b=>b.branch===name)) { alert('이미 존재하는 관리점명입니다'); return; }
   list.push({ branch: name, names: [] });
-  saveBranchStaff(list);
+  await saveBranchStaff(list);
   if (input) input.value = '';
   renderBranchStaffModal();
 };
@@ -6689,7 +6879,7 @@ function renderAuthPage(el) {
     if (us.find(u => u.id === id)) { alert('이미 사용 중인 아이디입니다.'); return; }
     const checked = [...document.querySelectorAll('.nu-menu-chk:checked')].map(c => c.value);
     us.push({ id, password:pw, name, role, allowedPages: role==='admin' ? MENU_LIST.map(m=>m.page) : checked, createdAt: new Date().toISOString() });
-    saveAuthUsers(us);
+    await saveAuthUsers(us);
     window.closeNewUserModal();
     renderAuthPage(el);
   };
@@ -6745,7 +6935,7 @@ function renderAuthPage(el) {
     const checked = [...document.querySelectorAll('.eu-menu-chk:checked')].map(c => c.value);
     us[_editIdx].role         = role;
     us[_editIdx].allowedPages = role==='admin' ? MENU_LIST.map(m=>m.page) : checked;
-    saveAuthUsers(us);
+    await saveAuthUsers(us);
     window.closeEditUserModal();
     renderAuthPage(el);
   };
@@ -6755,7 +6945,7 @@ function renderAuthPage(el) {
     const newPw = prompt(\`[\${us[i].id}] 새 비밀번호 입력:\`);
     if (!newPw || newPw.length < 4) { if(newPw !== null) alert('4자 이상 입력하세요.'); return; }
     us[i].password = newPw;
-    saveAuthUsers(us);
+    await saveAuthUsers(us);
     alert('비밀번호가 초기화되었습니다.');
   };
 
@@ -6763,7 +6953,7 @@ function renderAuthPage(el) {
     const us = loadAuthUsers();
     if (!confirm(\`[\${us[i].id}] 계정을 삭제하시겠습니까?\`)) return;
     us.splice(i, 1);
-    saveAuthUsers(us);
+    await saveAuthUsers(us);
     renderAuthPage(el);
   };
 
@@ -6790,7 +6980,7 @@ function renderAuthPage(el) {
     if (ti < 0) return;
     us[ti].role         = src.role;
     us[ti].allowedPages = [...src.allowedPages];
-    saveAuthUsers(us);
+    await saveAuthUsers(us);
     window.closeCopyUserModal();
     renderAuthPage(el);
     alert(\`[\${targetId}] 에 권한을 복제했습니다.\`);
@@ -6914,7 +7104,7 @@ function renderIPAllowPage(el) {
   window.toggleIPRestriction = function(v) {
     const ipData = loadAuthIP();
     ipData.enabled = v;
-    saveAuthIP(ipData);
+    await saveAuthIP(ipData);
   };
 
   window.addIPEntry = function() {
@@ -6923,7 +7113,7 @@ function renderIPAllowPage(el) {
     if (!cidr) { alert('IP 또는 CIDR을 입력하세요.'); return; }
     const ipData = loadAuthIP();
     ipData.list.push({ label, cidr, enabled: true });
-    saveAuthIP(ipData);
+    await saveAuthIP(ipData);
     renderIPAllowPage(el);
   };
 
@@ -6937,7 +7127,7 @@ function renderIPAllowPage(el) {
   window.toggleIPEntry = function(i, v) {
     const ipData = loadAuthIP();
     ipData.list[i].enabled = v;
-    saveAuthIP(ipData);
+    await saveAuthIP(ipData);
     const cnt = document.getElementById('ip-list-count');
     if(cnt) cnt.textContent = ipData.list.length;
   };
@@ -6946,14 +7136,14 @@ function renderIPAllowPage(el) {
     const ipData = loadAuthIP();
     if (!confirm(\`[\${ipData.list[i].cidr}] 을 삭제하시겠습니까?\`)) return;
     ipData.list.splice(i, 1);
-    saveAuthIP(ipData);
+    await saveAuthIP(ipData);
     renderIPAllowPage(el);
   };
 
   window.saveIPList = function() {
     const ipData = loadAuthIP();
     ipData.savedAt = new Date().toISOString();
-    saveAuthIP(ipData);
+    await saveAuthIP(ipData);
     const t = document.getElementById('ip-save-time');
     if(t) t.textContent = '최근 저장: ' + new Date().toLocaleString('ko-KR');
     alert('저장되었습니다.');
