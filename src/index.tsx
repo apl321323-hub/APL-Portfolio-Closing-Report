@@ -997,9 +997,9 @@ async function init() {
       const badge = document.getElementById('sb-contract-count');
       if (badge) badge.textContent = Object.keys(getContractDB()).length;
     });
-    // 4. 영업리스트 배지 초기화
+    // 4. 영업리스트 배지 초기화 (유효 key만 카운트)
     const salesBadge = document.getElementById('sb-sales-count');
-    if (salesBadge) { const n = Object.keys(getSalesDB()).length; salesBadge.textContent = n || ''; }
+    if (salesBadge) { const n = getSalesKeys().length; salesBadge.textContent = n > 0 ? String(n) : ''; }
   } catch(e) {
     console.error('[init] 초기화 실패:', e);
     const mc = document.getElementById('main-content');
@@ -2023,7 +2023,9 @@ function saveSalesDB(db) {
   localStorage.setItem(SALES_DB_KEY, JSON.stringify(db));
 }
 function getSalesKeys() {
-  return Object.keys(getSalesDB()).sort().reverse();
+  const db = getSalesDB();
+  // 유효한 데이터가 있는 key만 반환
+  return Object.keys(db).filter(k => db[k] && db[k].records).sort().reverse();
 }
 
 // ── 관리점 직원명단 스토리지
@@ -2052,9 +2054,9 @@ function renderSalesPage(el) {
   const keys = getSalesKeys();
   const branchList = loadBranchStaff();
 
-  // 배지 업데이트
+  // 배지 업데이트 (유효 key 수)
   const badge = document.getElementById('sb-sales-count');
-  if (badge) badge.textContent = keys.length || '';
+  if (badge) badge.textContent = keys.length > 0 ? String(keys.length) : '';
 
   // ── 업로드된 목록이 없을 때
   if (keys.length === 0) {
@@ -2156,83 +2158,83 @@ function renderSalesPage(el) {
     const tdCls = 'px-3 py-2 text-sm';
 
     if (tab === 'agent') {
-      return \`<div class="overflow-auto"><table class="data-table w-full">
+      return \`<div class="overflow-x-auto"><table class="data-table" style="min-width:540px">
         <thead><tr>
-          <th class="\${thCls}">에이전트(광고매체)</th>
-          <th class="\${thCls} text-right">접수</th>
-          <th class="\${thCls} text-right">계약(승인)</th>
-          <th class="\${thCls} text-right">승인율</th>
-          <th class="\${thCls} text-right">계약금액</th>
+          <th style="text-align:left;padding:9px 12px;width:38%">에이전트(광고매체)</th>
+          <th style="text-align:right;padding:9px 12px">접수</th>
+          <th style="text-align:right;padding:9px 12px">계약(승인)</th>
+          <th style="text-align:right;padding:9px 12px">승인율</th>
+          <th style="text-align:right;padding:9px 12px">계약금액</th>
         </tr></thead>
         <tbody>
           \${agentArr.map(([ag, g]) => \`<tr class="hover:bg-gray-50">
-            <td class="\${tdCls} font-medium">\${ag}</td>
-            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
-            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
-            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
-            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+            <td style="padding:8px 12px;font-weight:500">\${ag||'미상'}</td>
+            <td style="padding:8px 12px;text-align:right">\${fmtN(g.recv)}건</td>
+            <td style="padding:8px 12px;text-align:right;color:#059669;font-weight:700">\${fmtN(g.appr)}건</td>
+            <td style="padding:8px 12px;text-align:right">\${rate(g.appr,g.recv)}</td>
+            <td style="padding:8px 12px;text-align:right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
           </tr>\`).join('')}
         </tbody>
       </table></div>\`;
     }
     if (tab === 'product') {
-      return \`<div class="overflow-auto"><table class="data-table w-full">
+      return \`<div class="overflow-x-auto"><table class="data-table" style="min-width:520px">
         <thead><tr>
-          <th class="\${thCls}">상품명</th>
-          <th class="\${thCls} text-right">접수</th>
-          <th class="\${thCls} text-right">계약(승인)</th>
-          <th class="\${thCls} text-right">승인율</th>
-          <th class="\${thCls} text-right">계약금액</th>
+          <th style="text-align:left;padding:9px 12px;width:38%">상품명</th>
+          <th style="text-align:right;padding:9px 12px">접수</th>
+          <th style="text-align:right;padding:9px 12px">계약(승인)</th>
+          <th style="text-align:right;padding:9px 12px">승인율</th>
+          <th style="text-align:right;padding:9px 12px">계약금액</th>
         </tr></thead>
         <tbody>
           \${prodArr.map(([p, g]) => \`<tr class="hover:bg-gray-50">
-            <td class="\${tdCls} font-medium">\${p}</td>
-            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
-            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
-            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
-            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+            <td style="padding:8px 12px;font-weight:500">\${p||'미상'}</td>
+            <td style="padding:8px 12px;text-align:right">\${fmtN(g.recv)}건</td>
+            <td style="padding:8px 12px;text-align:right;color:#059669;font-weight:700">\${fmtN(g.appr)}건</td>
+            <td style="padding:8px 12px;text-align:right">\${rate(g.appr,g.recv)}</td>
+            <td style="padding:8px 12px;text-align:right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
           </tr>\`).join('')}
         </tbody>
       </table></div>\`;
     }
     if (tab === 'reviewer') {
-      return \`<div class="overflow-auto"><table class="data-table w-full">
+      return \`<div class="overflow-x-auto"><table class="data-table" style="min-width:580px">
         <thead><tr>
-          <th class="\${thCls}">관리점</th>
-          <th class="\${thCls}">심사자</th>
-          <th class="\${thCls} text-right">접수</th>
-          <th class="\${thCls} text-right">계약(승인)</th>
-          <th class="\${thCls} text-right">승인율</th>
-          <th class="\${thCls} text-right">계약금액</th>
+          <th style="text-align:left;padding:9px 12px">관리점</th>
+          <th style="text-align:left;padding:9px 12px">심사자</th>
+          <th style="text-align:right;padding:9px 12px">접수</th>
+          <th style="text-align:right;padding:9px 12px">계약(승인)</th>
+          <th style="text-align:right;padding:9px 12px">승인율</th>
+          <th style="text-align:right;padding:9px 12px">계약금액</th>
         </tr></thead>
         <tbody>
           \${reviewerArr.map(([rv, g]) => \`<tr class="hover:bg-gray-50">
-            <td class="\${tdCls} text-xs text-gray-500">\${g.branch}</td>
-            <td class="\${tdCls} font-medium">\${rv}</td>
-            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
-            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
-            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
-            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+            <td style="padding:8px 12px;font-size:12px;color:#6b7a99">\${g.branch}</td>
+            <td style="padding:8px 12px;font-weight:500">\${rv||'미배정'}</td>
+            <td style="padding:8px 12px;text-align:right">\${fmtN(g.recv)}건</td>
+            <td style="padding:8px 12px;text-align:right;color:#059669;font-weight:700">\${fmtN(g.appr)}건</td>
+            <td style="padding:8px 12px;text-align:right">\${rate(g.appr,g.recv)}</td>
+            <td style="padding:8px 12px;text-align:right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
           </tr>\`).join('')}
         </tbody>
       </table></div>\`;
     }
     if (tab === 'branch') {
-      return \`<div class="overflow-auto"><table class="data-table w-full">
+      return \`<div class="overflow-x-auto"><table class="data-table" style="min-width:500px">
         <thead><tr>
-          <th class="\${thCls}">관리점</th>
-          <th class="\${thCls} text-right">접수</th>
-          <th class="\${thCls} text-right">계약(승인)</th>
-          <th class="\${thCls} text-right">승인율</th>
-          <th class="\${thCls} text-right">계약금액</th>
+          <th style="text-align:left;padding:9px 12px;width:35%">관리점</th>
+          <th style="text-align:right;padding:9px 12px">접수</th>
+          <th style="text-align:right;padding:9px 12px">계약(승인)</th>
+          <th style="text-align:right;padding:9px 12px">승인율</th>
+          <th style="text-align:right;padding:9px 12px">계약금액</th>
         </tr></thead>
         <tbody>
           \${branchArr.map(([br, g]) => \`<tr class="hover:bg-gray-50">
-            <td class="\${tdCls} font-bold">\${br}</td>
-            <td class="\${tdCls} text-right">\${fmtN(g.recv)}건</td>
-            <td class="\${tdCls} text-right text-green-700 font-bold">\${fmtN(g.appr)}건</td>
-            <td class="\${tdCls} text-right">\${rate(g.appr,g.recv)}</td>
-            <td class="\${tdCls} text-right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
+            <td style="padding:8px 12px;font-weight:700">\${br}</td>
+            <td style="padding:8px 12px;text-align:right">\${fmtN(g.recv)}건</td>
+            <td style="padding:8px 12px;text-align:right;color:#059669;font-weight:700">\${fmtN(g.appr)}건</td>
+            <td style="padding:8px 12px;text-align:right">\${rate(g.appr,g.recv)}</td>
+            <td style="padding:8px 12px;text-align:right">\${g.amt>0?fmtAmt(g.amt):'-'}</td>
           </tr>\`).join('')}
         </tbody>
       </table></div>\`;
@@ -2319,7 +2321,7 @@ function renderSalesPage(el) {
   <div class="card p-4">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-database mr-2 text-indigo-400"></i>저장된 영업리스트 (\${keys.length}건)</h3>
     <div class="space-y-2">
-      \${keys.map(k => {
+      \${keys.filter(k => db[k] && db[k].records).map(k => {
         const d = db[k]; const y2=k.slice(0,4), m2=parseInt(k.slice(4));
         const isActive = k===selKey;
         return \`<div class="month-row \${isActive?'border-blue-300 bg-blue-50':''}">
