@@ -884,7 +884,29 @@ let _authIPCache = null;
 
 async function loadAuthUsersAsync() {
   const val = await supaKV.get('auth:users', null);
-  _authUsersCache = val || defaultAuthUsers();
+  if (val !== null) {
+    _authUsersCache = val;
+  } else {
+    // Supabase에 없으면 localStorage 마이그레이션 시도
+    try {
+      const s = localStorage.getItem(AUTH_USERS_KEY);
+      if (s) {
+        const old = JSON.parse(s);
+        if (old && old.length > 0) {
+          _authUsersCache = old;
+          await supaKV.set('auth:users', old);
+          localStorage.removeItem(AUTH_USERS_KEY);
+          console.log('[권한] localStorage → Supabase 마이그레이션 완료 (' + old.length + '명)');
+        } else {
+          _authUsersCache = defaultAuthUsers();
+        }
+      } else {
+        _authUsersCache = defaultAuthUsers();
+      }
+    } catch(e) {
+      _authUsersCache = defaultAuthUsers();
+    }
+  }
   return _authUsersCache;
 }
 function loadAuthUsers() {
@@ -904,7 +926,21 @@ async function saveAuthUsers(users) {
 
 async function loadAuthIPAsync() {
   const val = await supaKV.get('auth:ip', null);
-  _authIPCache = val || defaultAuthIP();
+  if (val !== null) {
+    _authIPCache = val;
+  } else {
+    try {
+      const s = localStorage.getItem(AUTH_IP_KEY);
+      if (s) {
+        const old = JSON.parse(s);
+        _authIPCache = old || defaultAuthIP();
+        await supaKV.set('auth:ip', _authIPCache);
+        localStorage.removeItem(AUTH_IP_KEY);
+      } else {
+        _authIPCache = defaultAuthIP();
+      }
+    } catch(e) { _authIPCache = defaultAuthIP(); }
+  }
   return _authIPCache;
 }
 function loadAuthIP() {
@@ -7709,14 +7745,21 @@ function togglePwVisible() {
 }
 window.togglePwVisible = togglePwVisible;
 
-function doLogin() {
+async function doLogin() {
   const id = (document.getElementById('login-id').value || '').trim();
   const pw = (document.getElementById('login-pw').value || '').trim();
   const errBox = document.getElementById('login-error');
   const errMsg = document.getElementById('login-error-msg');
 
-  const users = loadAuthUsers();
+  // 로그인 버튼 비활성화 + 로딩 표시
+  const loginBtn = document.querySelector('#login-overlay button[type="submit"], #login-overlay button:not([type])');
+  if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = '확인 중...'; }
+
+  // Supabase에서 최신 유저 목록 반드시 로드 (캐시 미비 상황 대비)
+  const users = await loadAuthUsersAsync();
   const user  = users.find(u => u.id === id && u.password === pw);
+
+  if (loginBtn) { loginBtn.disabled = false; loginBtn.textContent = '로그인'; }
 
   if (!user) {
     errMsg.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
